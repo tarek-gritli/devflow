@@ -16,8 +16,12 @@ const spaceGrotesk = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "DevFlow",
-  description: "A better version of stack overflow",
+  title: "Dev Overflow",
+  description:
+    "A community-driven platform for asking and answering programming questions. Get help, share knowledge, and collaborate with developers from around the world. Explore topics in web development, mobile app development, algorithms, data structures, and more.",
+  icons: {
+    icon: "/images/site-logo.svg",
+  },
 };
 
 export default function RootLayout({
@@ -28,7 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.className} ${spaceGrotesk.variable} antialiased`}
       >
         {children}
       </body>
