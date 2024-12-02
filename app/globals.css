@@ -212,15 +212,19 @@
   }
 
   .dark-gradient {
-    background: linear-gradient(232deg,
-        rgba(23, 28, 35, 0.41) 0%,
-        rgba(19, 22, 28, 0.7) 100%);
+    background: linear-gradient(
+      232deg,
+      rgba(23, 28, 35, 0.41) 0%,
+      rgba(19, 22, 28, 0.7) 100%
+    );
   }
 
   .light-gradient {
-    background: linear-gradient(132deg,
-        rgba(247, 249, 255, 0.5) 0%,
-        rgba(229, 237, 255, 0.25) 100%);
+    background: linear-gradient(
+      132deg,
+      rgba(247, 249, 255, 0.5) 0%,
+      rgba(229, 237, 255, 0.25) 100%
+    );
   }
 
   .primary-text-gradient {
@@ -275,9 +279,21 @@
   }
 
   .dark-gradient {
-    background: linear-gradient(232deg,
-        rgba(23, 28, 35, 0.41) 0%,
-        rgba(19, 22, 28, 0.7) 100%);
+    background: linear-gradient(
+      232deg,
+      rgba(23, 28, 35, 0.41) 0%,
+      rgba(19, 22, 28, 0.7) 100%
+    );
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
 }
 
