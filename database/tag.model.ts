@@ -5,6 +5,8 @@ export interface ITag {
   questions: number;
 }
 
+export interface ITagDocument extends ITag, Document {}
+
 const TagSchema = new Schema<ITag>(
   {
     name: {
