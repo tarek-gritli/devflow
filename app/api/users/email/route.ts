@@ -10,6 +10,7 @@ import { UserSchema } from "@/lib/validations";
 export async function POST(request: Request) {
   const { email } = await request.json();
   try {
+    await dbConnect();
     const validatedData = UserSchema.partial().safeParse({ email });
     if (!validatedData.success) {
       throw new ValidationError(validatedData.error.flatten().fieldErrors);
