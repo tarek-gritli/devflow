@@ -46,3 +46,5 @@ async function action<T>({
     return { params, session };
   }
 }
+
+export default action;
