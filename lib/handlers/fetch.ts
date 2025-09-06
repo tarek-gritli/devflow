@@ -15,7 +15,7 @@ export async function fetchHandler<T>(
   options: FetchOptions = {}
 ): Promise<ActionResponse<T>> {
   const {
-    timeout = 5000,
+    timeout = 100000,
     headers: customHeaders = {},
     ...restOptions
   } = options;
@@ -54,7 +54,7 @@ export async function fetchHandler<T>(
     if (error.name === "AbortError") {
       logger.warn(`Request to ${url} timed out`);
     } else {
-      logger.error(`Error fetching ${url}`, error);
+      logger.error({ err: error }, `Error fetching ${url}`);
     }
 
     return handleError(error) as ActionResponse<T>;

@@ -1,6 +1,6 @@
 "use server";
 
-import mongoose, { Error, FilterQuery } from "mongoose";
+import mongoose, { FilterQuery } from "mongoose";
 
 import Question, { IQuestionDocument } from "@/database/question.model";
 import TagQuestion from "@/database/tag-question";

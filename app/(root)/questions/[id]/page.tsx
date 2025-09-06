@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { unstable_after as after } from "next/server";
+import { after } from "next/server";
 import React from "react";
 
 import AllAnswers from "@/components/answers/AllAnswers";
@@ -111,7 +111,11 @@ const QuestionDetails = async ({ params }: RouteParams) => {
       </section>
 
       <section className="my-5">
-        <AnswerForm questionId={question._id} />
+        <AnswerForm
+          questionId={question._id}
+          questionTitle={title}
+          questionContent={content}
+        />
       </section>
     </>
   );
