@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import User from "@/database/user.model";
+import { User } from "@/database";
 import handleError from "@/lib/handlers/error";
 import { NotFoundError } from "@/lib/http-errors";
 import dbConnect from "@/lib/mongoose";

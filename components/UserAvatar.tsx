@@ -17,7 +17,7 @@ interface Props {
 
 const UserAvatar = ({
   id,
-  name,
+  name = "",
   imageUrl,
   className = "h-9 w-9",
   fallbackClassName,
