@@ -1,5 +1,6 @@
 "use server";
 
+import mongoose, { PipelineStage } from "mongoose";
 import { Collection, Question } from "@/database";
 import action from "../handlers/action";
 import handleError from "../handlers/error";
@@ -11,6 +12,7 @@ import { NotFoundError } from "../http-errors";
 import { revalidatePath } from "next/cache";
 import ROUTES from "@/constants/routes";
 import { FilterQuery } from "mongoose";
+import { pipeline } from "stream";
 
 export const toggleSaveQuestion = async (
   params: CollectionBaseParams
@@ -151,20 +153,58 @@ export const getSavedQuestions = async (
   }
 
   try {
-    const totalQuestions = await Question.countDocuments(filterQuery);
-    const questions = await Collection.find(filterQuery)
-      .populate({
-        path: "question",
-        populate: [
-          { path: "tags", select: "_id name" },
-          { path: "author", select: "_id name image" },
-        ],
-      })
-      .sort(sortCriteria)
-      .skip(skip)
-      .limit(limit);
+    const pipeline: PipelineStage[] = [
+      { $match: { author: new mongoose.Types.ObjectId(userId) } },
+      {
+        $lookup: {
+          from: "questions",
+          localField: "question",
+          foreignField: "_id",
+          as: "question",
+        },
+      },
+      { $unwind: "$question" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "question.author",
+          foreignField: "_id",
+          as: "question.author",
+        },
+      },
+      { $unwind: "$question.author" },
+      {
+        $lookup: {
+          from: "tags",
+          localField: "question.tags",
+          foreignField: "_id",
+          as: "question.tags",
+        },
+      },
+    ];
 
-    const isNext = totalQuestions > skip + questions.length;
+    if (query) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "question.title": { $regex: query, $options: "i" } },
+            { "question.content": { $regex: query, $options: "i" } },
+          ],
+        },
+      });
+    }
+
+    const [totalCount] = await Collection.aggregate([
+      ...pipeline,
+      { $count: "count" },
+    ]);
+
+    pipeline.push({ $sort: sortCriteria }, { $skip: skip }, { $limit: limit });
+    pipeline.push({ $project: { question: 1, author: 1 } });
+
+    const questions = await Collection.aggregate(pipeline);
+
+    const isNext = totalCount > skip + questions.length;
 
     return {
       success: true,
