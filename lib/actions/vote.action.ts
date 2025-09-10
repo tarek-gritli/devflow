@@ -13,8 +13,10 @@ import {
 } from "../validations";
 import { revalidatePath } from "next/cache";
 import ROUTES from "@/constants/routes";
+import { after } from "next/server";
+import { createInteraction } from "./interaction.action";
 
-export async function updateVoteCount(
+async function updateVoteCount(
   params: UpdateVoteCountParams,
   session?: ClientSession
 ): Promise<ActionResponse> {
@@ -27,7 +29,7 @@ export async function updateVoteCount(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { id, type, voteType, change } = validationResult.params!;
+  const { id, type, voteType, change } = validationResult?.params!;
 
   const Model = type === "question" ? Question : Answer;
   const voteField = voteType === "upvote" ? "upvotes" : "downvotes";
@@ -63,8 +65,8 @@ export async function createVote(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { id, type, voteType } = validationResult.params!;
-  const userId = validationResult.session?.user?.id;
+  const { id, type, voteType } = validationResult?.params!;
+  const userId = validationResult?.session?.user?.id;
 
   if (!userId) return handleError(new Error("Unauthorized")) as ErrorResponse;
 
@@ -72,6 +74,13 @@ export async function createVote(
   session.startTransaction();
 
   try {
+    const Model = type === "question" ? Question : Answer;
+
+    const contentDoc = await Model.findById(id).session(session);
+    if (!contentDoc) throw new Error("Content not found");
+
+    const contentAuthorId = contentDoc.author.toString();
+
     const existingVote = await Vote.findOne({
       author: userId,
       id,
@@ -113,6 +122,15 @@ export async function createVote(
       await updateVoteCount({ id, type, voteType, change: 1 }, session);
     }
 
+    after(async () => {
+      await createInteraction({
+        action: voteType,
+        actionId: id,
+        actionTarget: type,
+        authorId: contentAuthorId,
+      });
+    });
+
     await session.commitTransaction();
     session.endSession();
 
@@ -139,8 +157,8 @@ export async function hasVoted(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { id, type } = validationResult.params!;
-  const userId = validationResult.session?.user?.id;
+  const { id, type } = validationResult?.params!;
+  const userId = validationResult?.session?.user?.id;
 
   try {
     const vote = await Vote.findOne({
