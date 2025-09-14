@@ -135,3 +135,8 @@ interface UpdateUserParams {
   userLocation?: string;
   bio?: string;
 }
+
+interface JobFilterParams {
+  query: string;
+  page: number;
+}
