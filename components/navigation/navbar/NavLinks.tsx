@@ -21,18 +21,19 @@ const NavLinks = ({
   return (
     <>
       {sidebarLinks.map((item) => {
-        const isActive =
-          (pathname.includes(item.route) && item.route.length > 1) ||
-          pathname === item.route;
+        const isProfileRoute = item.route === "/profile";
+        const actualRoute =
+          isProfileRoute && userId ? `${item.route}/${userId}` : item.route;
+        const isActive = isProfileRoute
+          ? pathname.startsWith("/profile")
+          : (pathname.includes(item.route) && item.route.length > 1) ||
+            pathname === item.route;
 
-        if (item.route === "/profile") {
-          if (userId) item.route = `${item.route}/${userId}`;
-          else return null;
-        }
+        if (isProfileRoute && !userId) return null;
 
         const LinkComponent = (
           <Link
-            href={item.route}
+            href={actualRoute}
             key={item.label}
             className={cn(
               isActive

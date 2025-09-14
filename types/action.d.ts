@@ -127,3 +127,11 @@ interface GlobalSearchParams {
   query: string;
   type: string | null;
 }
+
+interface UpdateUserParams {
+  name?: string;
+  username?: string;
+  portfolio?: string;
+  userLocation?: string;
+  bio?: string;
+}
