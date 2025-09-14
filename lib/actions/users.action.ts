@@ -13,6 +13,7 @@ import handleError from "../handlers/error";
 import { FilterQuery, Types, PipelineStage } from "mongoose";
 import { NotFoundError } from "../http-errors";
 import { assignBadges } from "../utils";
+import { cache } from "react";
 
 export async function getUsers(
   params: PaginatedSearchParams
@@ -76,7 +77,9 @@ export async function getUsers(
   }
 }
 
-export async function getUser(params: GetUserParams): Promise<
+export const getUser = cache(async function getUser(
+  params: GetUserParams
+): Promise<
   ActionResponse<{
     user: User;
     totalQuestions: number;
@@ -120,7 +123,7 @@ export async function getUser(params: GetUserParams): Promise<
   } catch (error) {
     return handleError(error) as ErrorResponse;
   }
-}
+});
 
 export async function getUserQuestions(
   params: GetUserQuestionsParams

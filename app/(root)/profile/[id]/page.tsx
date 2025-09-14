@@ -20,6 +20,27 @@ import QuestionCard from "@/components/cards/QuestionCard";
 import Pagination from "@/components/Pagination";
 import AnswerCard from "@/components/cards/AnswerCard";
 import TagCard from "@/components/cards/TagCard";
+import { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: RouteParams): Promise<Metadata> {
+  const { id } = await params;
+
+  const { success, data: user } = await getUser({ userId: id });
+
+  if (!success || !user) {
+    return {
+      title: "User not found",
+      description: "The user you are looking for does not exist.",
+    };
+  }
+
+  return {
+    title: `${user.user.name} Profile`,
+    description: user.user.bio || `Profile of ${user.user.name} on DevFlow`,
+  };
+}
 
 const Profile = async ({ params, searchParams }: RouteParams) => {
   const { id } = await params;
