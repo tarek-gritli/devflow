@@ -187,7 +187,7 @@ export const getUserAnswers = async (
       author: userId,
     });
     const answers = await Answer.find({ author: userId })
-      .populate({ path: "question", select: "title" })
+      .populate("author", "name image")
       .skip(skip)
       .limit(limit);
     const isNext = totalAnswers > skip + answers.length;

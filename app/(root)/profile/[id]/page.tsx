@@ -170,7 +170,7 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
               Top Posts
             </TabsTrigger>
             <TabsTrigger value="answers" className="tab">
-              Answers
+              Top Answers
             </TabsTrigger>
           </TabsList>
           <TabsContent

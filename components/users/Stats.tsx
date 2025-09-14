@@ -4,7 +4,7 @@ import Image from "next/image";
 interface Props {
   totalAnswers: number;
   totalQuestions: number;
-  badges: BadgeCounts;
+  badges: Badges;
   reputationPoints: number;
 }
 
@@ -34,7 +34,7 @@ const Stats = ({
     <div className="mt-3">
       <h4 className="h3-semibold text-dark200_light900">Stats</h4>
       <span className="small-semibold primary-text-gradient">
-        {formatNumber(reputationPoints)}
+        {formatNumber(reputationPoints)} Reputation Points
       </span>
 
       <div className="mt-5 grid grid-cols-1 gap-5 xs:grid-cols-2 md:grid-cols-4">
