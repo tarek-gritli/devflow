@@ -229,3 +229,8 @@ export const CreateInteractionSchema = z.object({
   actionTarget: z.enum(["question", "answer"]),
   action: z.enum(InteractionActionEnums),
 });
+
+export const GlobalSearchSchema = z.object({
+  query: z.string(),
+  type: z.string().nullable().optional(),
+});
