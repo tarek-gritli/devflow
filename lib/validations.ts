@@ -1,4 +1,3 @@
-import { InteractionActionEnums } from "@/database/interaction.model";
 import { z } from "zod";
 
 export const SignInSchema = z.object({
@@ -227,7 +226,16 @@ export const CreateInteractionSchema = z.object({
   authorId: z.string().min(1),
   actionId: z.string().min(1),
   actionTarget: z.enum(["question", "answer"]),
-  action: z.enum(InteractionActionEnums),
+  action: z.enum([
+    "view",
+    "upvote",
+    "downvote",
+    "bookmark",
+    "post",
+    "edit",
+    "delete",
+    "search",
+  ]),
 });
 
 export const GlobalSearchSchema = z.object({
@@ -243,7 +251,9 @@ export const UpdateUserSchema = z.object({
     .string()
     .min(3, { message: "username musn't be longer then 100 characters." }),
   portfolio: z.string().url({ message: "Please provide valid URL" }),
-  userLocation: z.string().min(3, { message: "Please provide proper location" }),
+  userLocation: z
+    .string()
+    .min(3, { message: "Please provide proper location" }),
   bio: z.string().min(3, {
     message: "Bio must be at least 3 characters.",
   }),
