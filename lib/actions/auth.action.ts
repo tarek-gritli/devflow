@@ -48,6 +48,7 @@ export async function signUpWithCredentials(
           username,
           email,
           password: hashedPassword,
+          image: `https://ui-avatars.com/api/?name=${name}&background=random&length=1`,
         },
       ],
       { session }
