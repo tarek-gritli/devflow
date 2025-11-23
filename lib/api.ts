@@ -11,17 +11,17 @@ export const api = {
       user,
       provider,
       providerAccountId,
-    }: SignInWithOAuthParams) =>
+    }: SignInWithOAuthParams): Promise<ActionResponse> =>
       fetchHandler(`${API_BASE_URL}/auth/${ROUTES.SIGN_IN_WITH_OAUTH}`, {
         method: "POST",
         body: JSON.stringify({ user, provider, providerAccountId }),
       }),
   },
   users: {
-    getOne: (id: string) => fetchHandler(`${API_BASE_URL}/users/${id}`),
+    getOne: (id: string): Promise<ActionResponse<User>> => fetchHandler(`${API_BASE_URL}/users/${id}`),
   },
   accounts: {
-    getByProvider: (providerId: string) =>
+    getByProvider: (providerId: string): Promise<ActionResponse<Account>> =>
       fetchHandler(`${API_BASE_URL}/accounts/provider`, {
         method: "POST",
         body: JSON.stringify({ providerAccountId: providerId }),

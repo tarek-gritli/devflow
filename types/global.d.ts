@@ -75,6 +75,17 @@ interface User {
   createdAt: Date;
 }
 
+interface Account {
+  id: string;
+  userId: string;
+  password?: string;
+  provider: string;
+  providerAccountId?: string;
+  name: string;
+  image?: string;
+
+}
+
 interface Collection {
   id: string;
   author: string | Author;
