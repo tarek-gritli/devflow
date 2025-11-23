@@ -1,15 +1,14 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import mongoose from "mongoose";
 
 import { signIn } from "@/auth";
-import { Account, User } from "@/database";
 
 import action from "../handlers/action";
 import handleError from "../handlers/error";
 import { NotFoundError } from "../http-errors";
 import { SignInSchema, SignUpSchema } from "../validations";
+import { prisma } from "../prisma";
 
 export async function signUpWithCredentials(
   params: AuthCredentials
@@ -22,62 +21,52 @@ export async function signUpWithCredentials(
 
   const { name, username, email, password } = validationResult!.params;
 
-  const session = await mongoose.startSession();
-
-  session.startTransaction();
-
   try {
-    const existingUser = await User.findOne({ email }).session(session);
+    await prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
+        where: {
+          email,
+        },
+      });
+      if (existingUser) {
+        throw new Error("User already exists");
+      }
 
-    if (existingUser) {
-      throw new Error("User already exists");
-    }
+      const existingUsername = await tx.user.findUnique({
+        where: {
+          username,
+        },
+      });
+      if (existingUsername) {
+        throw new Error("Username already exists");
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-    const existingUsername = await User.findOne({ username }).session(session);
-
-    if (existingUsername) {
-      throw new Error("Username already exists");
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const [newUser] = await User.create(
-      [
-        {
+      const newUser = await tx.user.create({
+        data: {
           name,
           username,
           email,
-          password: hashedPassword,
           image: `https://ui-avatars.com/api/?name=${name}&background=random&length=1`,
         },
-      ],
-      { session }
-    );
+      });
 
-    await Account.create(
-      [
-        {
-          userId: newUser._id,
+      await tx.account.create({
+        data: {
+          userId: newUser.id,
           name,
           provider: "credentials",
           providerAccountId: email,
           password: hashedPassword,
         },
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
+      });
+    });
 
     await signIn("credentials", { email, password, redirect: false });
 
     return { success: true };
   } catch (error) {
-    await session.abortTransaction();
-
     return handleError(error) as ErrorResponse;
-  } finally {
-    session.endSession();
   }
 }
 
@@ -93,15 +82,23 @@ export async function signInWithCredentials(
   const { email, password } = validationResult!.params;
 
   try {
-    const existingUser = await User.findOne({ email });
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
 
     if (!existingUser) {
       throw new NotFoundError("User");
     }
 
-    const existingAccount = await Account.findOne({
-      provider: "credentials",
-      providerAccountId: email,
+    const existingAccount = await prisma.account.findUnique({
+      where: {
+        provider_providerAccountId: {
+          provider: "credentials",
+          providerAccountId: email,
+        },
+      },
     });
 
     if (!existingAccount) {
@@ -110,7 +107,7 @@ export async function signInWithCredentials(
 
     const passwordMatch = await bcrypt.compare(
       password,
-      existingAccount.password
+      existingAccount.password!
     );
 
     if (!passwordMatch) throw new Error("Password does not match");
