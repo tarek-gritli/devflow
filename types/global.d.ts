@@ -83,13 +83,21 @@ interface Account {
   providerAccountId?: string;
   name: string;
   image?: string;
-
 }
 
 interface Collection {
   id: string;
   author: string | Author;
   question: Question;
+}
+
+interface Interaction {
+  id: string;
+  action: "view" | "upvote" | "downvote" | "bookmark" | "post" | "edit" | "delete" | "search";
+  actionTarget: "question" | "answer";
+  authorId: string;
+  questionId?: string;
+  answerId?: string;
 }
 
 interface Badges {
