@@ -1,17 +1,17 @@
 interface Tag {
-  _id: string;
+  id: string;
   name: string;
   questions?: number;
 }
 
 interface Author {
-  _id: string;
+  id: string;
   name: string;
-  image: string;
+  image: string | null;
 }
 
 interface Question {
-  _id: string;
+  id: string;
   title: string;
   content: string;
   tags: Tag[];
@@ -53,7 +53,7 @@ interface PaginatedSearchParams {
 }
 
 interface Answer {
-  _id: string;
+  id: string;
   author: Author;
   content: string;
   createdAt: Date;
@@ -63,7 +63,7 @@ interface Answer {
 }
 
 interface User {
-  _id: string;
+  id: string;
   name: string;
   username: string;
   email: string;
@@ -76,7 +76,7 @@ interface User {
 }
 
 interface Collection {
-  _id: string;
+  id: string;
   author: string | Author;
   question: Question;
 }

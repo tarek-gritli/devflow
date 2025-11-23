@@ -1,7 +1,5 @@
 "use server";
 
-import mongoose, { PipelineStage } from "mongoose";
-import { Collection, Question } from "@/database";
 import action from "../handlers/action";
 import handleError from "../handlers/error";
 import {
@@ -11,8 +9,8 @@ import {
 import { NotFoundError } from "../http-errors";
 import { revalidatePath } from "next/cache";
 import ROUTES from "@/constants/routes";
-import { FilterQuery } from "mongoose";
-import { pipeline } from "stream";
+import { prisma } from "../prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 export const toggleSaveQuestion = async (
   params: CollectionBaseParams
@@ -31,18 +29,28 @@ export const toggleSaveQuestion = async (
   const userId = validationResult?.session?.user?.id;
 
   try {
-    const question = await Question.findById(questionId);
+    const question = await prisma.question.findUnique({
+      where: {
+        id: questionId,
+      },
+    });
     if (!question) {
       throw new NotFoundError("Question");
     }
 
-    const collection = await Collection.findOne({
-      question: questionId,
-      author: userId,
+    const collection = await prisma.collection.findFirst({
+      where: {
+        questionId,
+        authorId: userId,
+      },
     });
 
     if (collection) {
-      await Collection.findByIdAndDelete(collection._id);
+      await prisma.collection.delete({
+        where: {
+          id: collection.id,
+        },
+      });
 
       revalidatePath(ROUTES.QUESTION(questionId));
 
@@ -54,9 +62,11 @@ export const toggleSaveQuestion = async (
       };
     }
 
-    await Collection.create({
-      question: questionId,
-      author: userId,
+    await prisma.collection.create({
+      data: {
+        questionId,
+        authorId: userId!,
+      },
     });
 
     revalidatePath(ROUTES.QUESTION(questionId));
@@ -89,9 +99,11 @@ export const hasSavedQuestion = async (
   const userId = validationResult?.session?.user?.id;
 
   try {
-    const collection = await Collection.findOne({
-      question: questionId,
-      author: userId,
+    const collection = await prisma.collection.findFirst({
+      where: {
+        questionId,
+        authorId: userId,
+      },
     });
 
     return {
@@ -123,92 +135,97 @@ export const getSavedQuestions = async (
   const skip = (page - 1) * pageSize;
   const limit = pageSize;
 
-  const filterQuery: FilterQuery<typeof Collection> = { author: userId };
+  const whereClause: Prisma.CollectionWhereInput = {
+    authorId: userId,
+  };
 
   if (query) {
-    filterQuery.$or = [
-      { title: { $regex: new RegExp(query, "i") } },
-      { content: { $regex: new RegExp(query, "i") } },
-    ];
+    whereClause.question = {
+      OR: [
+        { title: { contains: query, mode: "insensitive" } },
+        { content: { contains: query, mode: "insensitive" } },
+      ],
+    };
   }
 
-  let sortCriteria = {};
+  let orderBy: Prisma.CollectionOrderByWithRelationInput = {};
 
   switch (filter) {
     case "mostrecent":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
     case "oldest":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "asc" };
       break;
     case "mostvoted":
-      sortCriteria = { upvotes: -1 };
+      orderBy = { question: { upvotes: "desc" } };
       break;
     case "mostanswered":
-      sortCriteria = { answers: -1 };
+      orderBy = { question: { answers: { _count: "desc" } } };
       break;
     default:
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
   }
 
   try {
-    const pipeline: PipelineStage[] = [
-      { $match: { author: new mongoose.Types.ObjectId(userId) } },
-      {
-        $lookup: {
-          from: "questions",
-          localField: "question",
-          foreignField: "_id",
-          as: "question",
+    const [collections, totalCount] = await prisma.$transaction([
+      prisma.collection.findMany({
+        where: whereClause,
+        include: {
+          author: true,
+          question: {
+            include: {
+              author: true,
+              tags: {
+                include: {
+                  tag: true,
+                },
+              },
+              _count: {
+                select: { answers: true },
+              },
+            },
+          },
         },
-      },
-      { $unwind: "$question" },
-      {
-        $lookup: {
-          from: "users",
-          localField: "question.author",
-          foreignField: "_id",
-          as: "question.author",
-        },
-      },
-      { $unwind: "$question.author" },
-      {
-        $lookup: {
-          from: "tags",
-          localField: "question.tags",
-          foreignField: "_id",
-          as: "question.tags",
-        },
-      },
-    ];
-
-    if (query) {
-      pipeline.push({
-        $match: {
-          $or: [
-            { "question.title": { $regex: query, $options: "i" } },
-            { "question.content": { $regex: query, $options: "i" } },
-          ],
-        },
-      });
-    }
-
-    const [totalCount] = await Collection.aggregate([
-      ...pipeline,
-      { $count: "count" },
+        orderBy,
+        skip,
+        take: pageSize,
+      }),
+      prisma.collection.count({
+        where: whereClause,
+      }),
     ]);
 
-    pipeline.push({ $sort: sortCriteria }, { $skip: skip }, { $limit: limit });
-    pipeline.push({ $project: { question: 1, author: 1 } });
+    const formattedCollections = collections.map((col) => ({
+      id: col.id,
+      author: col.author,
+      question: {
+        id: col.question.id,
+        title: col.question.title,
+        content: col.question.content,
+        tags: col.question.tags.map((qt) => ({
+          id: qt.tag.id,
+          name: qt.tag.name,
+        })),
+        author: {
+          id: col.question.author.id,
+          name: col.question.author.name,
+          image: col.question.author.image,
+        },
+        createdAt: col.question.createdAt,
+        upvotes: col.question.upvotes,
+        downvotes: col.question.downvotes,
+        answers: col.question._count.answers,
+        views: col.question.views,
+      },
+    }));
 
-    const questions = await Collection.aggregate(pipeline);
-
-    const isNext = totalCount > skip + questions.length;
+    const isNext = totalCount > skip + collections.length;
 
     return {
       success: true,
-      data: { collection: JSON.parse(JSON.stringify(questions)), isNext },
+      data: { collection: formattedCollections, isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
