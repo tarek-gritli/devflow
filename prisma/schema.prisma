@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String  @id @default(uuid())
+  name       String
+  username   String  @unique
+  email      String  @unique
+  bio        String?
+  image      String?
+  location   String?
+  portfolio  String?
+  reputation Int     @default(0)
+
+  accounts     Account[]
+  questions    Question[]
+  answers      Answer[]
+  votes        Vote[]
+  collections  Collection[]
+  interactions Interaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([username])
+  @@index([email])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  name              String
+  image             String?
+  password          String?
+  provider          String
+  providerAccountId String? @map("provider_account_id")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Question {
+  id        String @id @default(uuid())
+  title     String
+  content   String @db.Text()
+  views     Int    @default(0)
+  upvotes   Int    @default(0)
+  downvotes Int    @default(0)
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  tags         QuestionTag[]
+  answers      Answer[]
+  collections  Collection[]
+  votes        Vote[]
+  interactions Interaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("questions")
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String @unique
+
+  questionTags QuestionTag[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tags")
+}
+
+model QuestionTag {
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id])
+
+  tagId String @map("tag_id")
+  tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([questionId, tagId])
+  @@map("questions_tags")
+}
+
+model Answer {
+  id        String @id @default(uuid())
+  content   String @db.Text()
+  upvotes   Int    @default(0)
+  downvotes Int    @default(0)
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  votes Vote[]
+
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  interactions Interaction[]
+
+  @@map("answers")
+}
+
+model Vote {
+  id           String        @id @default(uuid())
+  actionTarget Target        @map("action_target")
+  direction    VoteDirection
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  answer   Answer? @relation(fields: [answerId], references: [id])
+  answerId String? @map("answer_id")
+
+  questionId String?   @map("question_id")
+  question   Question? @relation(fields: [questionId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, questionId])
+  @@unique([userId, answerId])
+  @@map("votes")
+}
+
+enum Target {
+  question
+  answer
+}
+
+enum VoteDirection {
+  upvote
+  downvote
+}
+
+model Collection {
+  id String @id @default(uuid())
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("collections")
+}
+
+model Interaction {
+  id           String @id @default(uuid())
+  action       Action
+  actionTarget Target @map("action_target")
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  questionId String?   @map("question_id")
+  question   Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  answerId String? @map("answer_id")
+  answer   Answer? @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("interactions")
+}
+
+enum Action {
+  view
+  upvote
+  downvote
+  bookmark
+  post
+  edit
+  delete
+  search
+}
