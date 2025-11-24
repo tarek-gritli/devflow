@@ -24,12 +24,13 @@ model User {
   portfolio  String?
   reputation Int     @default(0)
 
-  accounts     Account[]
-  questions    Question[]
-  answers      Answer[]
-  votes        Vote[]
-  collections  Collection[]
-  interactions Interaction[]
+  accounts      Account[]
+  questions     Question[]
+  answers       Answer[]
+  collections   Collection[]
+  interactions  Interaction[]
+  questionVotes QuestionVote[]
+  answerVotes   AnswerVote[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -68,11 +69,11 @@ model Question {
   authorId String @map("author_id")
   author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  tags         QuestionTag[]
-  answers      Answer[]
-  collections  Collection[]
-  votes        Vote[]
-  interactions Interaction[]
+  tags          QuestionTag[]
+  answers       Answer[]
+  collections   Collection[]
+  interactions  Interaction[]
+  questionVotes QuestionVote[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -117,35 +118,49 @@ model Answer {
   questionId String   @map("question_id")
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  votes Vote[]
-
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
   interactions Interaction[]
-
-  @@map("answers")
-}
-
-model Vote {
-  id           String        @id @default(uuid())
-  actionTarget Target        @map("action_target")
-  direction    VoteDirection
-
-  userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
-
-  answer   Answer? @relation(fields: [answerId], references: [id])
-  answerId String? @map("answer_id")
-
-  questionId String?   @map("question_id")
-  question   Question? @relation(fields: [questionId], references: [id])
+  answerVotes  AnswerVote[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@unique([userId, questionId])
-  @@unique([userId, answerId])
-  @@map("votes")
+  @@map("answers")
+}
+
+model QuestionVote {
+  id            String        @id @default(uuid())
+  voteDirection VoteDirection @map("vote_direction")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([questionId, userId])
+  @@index([questionId])
+  @@map("question_votes")
+}
+
+model AnswerVote {
+  id            String        @id @default(uuid())
+  voteDirection VoteDirection @map("vote_direction")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  answerId String @map("answer_id")
+  answer   Answer @relation(fields: [answerId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([answerId, userId])
+  @@index([answerId])
+  @@map("answer_votes")
 }
 
 enum Target {
