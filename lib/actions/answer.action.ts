@@ -167,9 +167,8 @@ export async function deleteAnswer(
     if (answer.authorId !== userId)
       throw new Error("You're not allowed to delete this answer");
 
-    await prisma.vote.deleteMany({
+    await prisma.answerVote.deleteMany({
       where: {
-        actionTarget: "answer",
         answerId,
       },
     });
