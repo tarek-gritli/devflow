@@ -96,7 +96,7 @@ model Tag {
 
 model QuestionTag {
   questionId String   @map("question_id")
-  question   Question @relation(fields: [questionId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   tagId String @map("tag_id")
   tag   Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -133,10 +133,10 @@ model QuestionVote {
   voteDirection VoteDirection @map("vote_direction")
 
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   questionId String   @map("question_id")
-  question   Question @relation(fields: [questionId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -151,10 +151,10 @@ model AnswerVote {
   voteDirection VoteDirection @map("vote_direction")
 
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   answerId String @map("answer_id")
-  answer   Answer @relation(fields: [answerId], references: [id])
+  answer   Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -178,10 +178,10 @@ model Collection {
   id String @id @default(uuid())
 
   authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id])
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   questionId String   @map("question_id")
-  question   Question @relation(fields: [questionId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -194,10 +194,10 @@ model QuestionInteraction {
   action Action
 
   authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id])
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   questionId String   @map("question_id")
-  question   Question @relation(fields: [questionId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -211,10 +211,10 @@ model AnswerInteraction {
   action Action
 
   authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id])
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   answerId String @map("answer_id")
-  answer   Answer @relation(fields: [answerId], references: [id])
+  answer   Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
