@@ -24,13 +24,14 @@ model User {
   portfolio  String?
   reputation Int     @default(0)
 
-  accounts      Account[]
-  questions     Question[]
-  answers       Answer[]
-  collections   Collection[]
-  interactions  Interaction[]
-  questionVotes QuestionVote[]
-  answerVotes   AnswerVote[]
+  accounts             Account[]
+  questions            Question[]
+  answers              Answer[]
+  collections          Collection[]
+  questionVotes        QuestionVote[]
+  answerVotes          AnswerVote[]
+  questionInteractions QuestionInteraction[]
+  answerInteractions   AnswerInteraction[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -69,11 +70,11 @@ model Question {
   authorId String @map("author_id")
   author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  tags          QuestionTag[]
-  answers       Answer[]
-  collections   Collection[]
-  interactions  Interaction[]
-  questionVotes QuestionVote[]
+  tags                 QuestionTag[]
+  answers              Answer[]
+  collections          Collection[]
+  questionInteractions QuestionInteraction[]
+  questionVotes        QuestionVote[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -118,8 +119,8 @@ model Answer {
   questionId String   @map("question_id")
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  interactions Interaction[]
-  answerVotes  AnswerVote[]
+  answerVotes        AnswerVote[]
+  answerInteractions AnswerInteraction[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -188,24 +189,38 @@ model Collection {
   @@map("collections")
 }
 
-model Interaction {
-  id           String @id @default(uuid())
-  action       Action
-  actionTarget Target @map("action_target")
+model QuestionInteraction {
+  id     String @id @default(uuid())
+  action Action
 
   authorId String @map("author_id")
   author   User   @relation(fields: [authorId], references: [id])
 
-  questionId String?   @map("question_id")
-  question   Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  answerId String? @map("answer_id")
-  answer   Answer? @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("interactions")
+  @@index([questionId])
+  @@map("question_interactions")
+}
+
+model AnswerInteraction {
+  id     String @id @default(uuid())
+  action Action
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  answerId String @map("answer_id")
+  answer   Answer @relation(fields: [answerId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([answerId])
+  @@map("answer_interactions")
 }
 
 enum Action {

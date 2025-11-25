@@ -1,12 +1,15 @@
-import { Interaction } from "@/generated/prisma/client";
 import action from "../handlers/action";
 import handleError from "../handlers/error";
 import { CreateInteractionSchema } from "../validations";
 import { prisma } from "../prisma";
+import {
+  AnswerInteraction,
+  QuestionInteraction,
+} from "@/generated/prisma/client";
 
 export async function createInteraction(
   params: CreateInteractionParams
-): Promise<ActionResponse<Interaction>> {
+): Promise<ActionResponse<QuestionInteraction | AnswerInteraction>> {
   const validationResult = await action({
     params,
     schema: CreateInteractionSchema,
@@ -25,17 +28,25 @@ export async function createInteraction(
   } = validationResult?.params!;
   const userId = validationResult?.session?.user?.id;
 
+  const isQuestion = actionTarget === "question";
+
   try {
     const interaction = await prisma.$transaction(async (tx) => {
-      const interaction = await tx.interaction.create({
-        data: {
-          authorId: userId!,
-          action: actionType,
-          actionTarget,
-          answerId: actionTarget === "answer" ? actionId : null,
-          questionId: actionTarget === "question" ? actionId : null,
-        },
-      });
+      const interaction = isQuestion
+        ? await tx.questionInteraction.create({
+            data: {
+              authorId: userId!,
+              action: actionType,
+              questionId: actionId,
+            },
+          })
+        : await tx.answerInteraction.create({
+            data: {
+              authorId: userId!,
+              action: actionType,
+              answerId: actionId,
+            },
+          });
 
       let performerPoints = 0;
       let authorPoints = 0;
@@ -50,10 +61,10 @@ export async function createInteraction(
           authorPoints = -2;
           break;
         case "post":
-          authorPoints = actionTarget === "question" ? 5 : 10;
+          authorPoints = isQuestion ? 5 : 10;
           break;
         case "delete":
-          authorPoints = actionTarget === "question" ? -5 : -10;
+          authorPoints = isQuestion ? -5 : -10;
           break;
       }
 
