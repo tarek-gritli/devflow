@@ -1,6 +1,5 @@
 "use server";
 
-import { Answer, Question, User } from "@/database";
 import action from "../handlers/action";
 import {
   GetUserAnswersSchema,
@@ -11,10 +10,11 @@ import {
   UpdateUserSchema,
 } from "../validations";
 import handleError from "../handlers/error";
-import { FilterQuery, Types, PipelineStage } from "mongoose";
 import { NotFoundError } from "../http-errors";
 import { assignBadges } from "../utils";
 import { cache } from "react";
+import { prisma } from "../prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 export async function getUsers(
   params: PaginatedSearchParams
@@ -33,45 +33,51 @@ export async function getUsers(
   const skip = (page - 1) * pageSize;
   const limit = pageSize;
 
-  const filterQuery: FilterQuery<typeof User> = {};
+  const whereClause: Prisma.UserWhereInput = {};
 
   if (query) {
-    filterQuery.$or = [
-      { name: { $regex: query, $options: "i" } },
-      { email: { $regex: query, $options: "i" } },
+    whereClause.OR = [
+      { name: { contains: query, mode: "insensitive" } },
+      { email: { contains: query, mode: "insensitive" } },
     ];
   }
 
-  let sortCriteria = {};
+  let orderBy: Prisma.UserOrderByWithRelationInput = {};
 
   switch (filter) {
     case "newest":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
     case "oldest":
-      sortCriteria = { createdAt: 1 };
+      orderBy = { createdAt: "asc" };
       break;
     case "popular":
-      sortCriteria = { reputation: -1 };
+      orderBy = { reputation: "desc" };
       break;
     default:
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
   }
 
   try {
-    const totalUsers = await User.countDocuments(filterQuery);
+    const [users, totalUsers] = await prisma.$transaction([
+      prisma.user.findMany({
+        where: whereClause,
+        orderBy,
+        skip,
+        take: limit + 1,
+      }),
+      prisma.user.count({
+        where: whereClause,
+      }),
+    ]);
 
-    const users = await User.find(filterQuery)
-      .sort(sortCriteria)
-      .skip(skip)
-      .limit(limit);
-
-    const isNext = totalUsers > skip + users.length;
+    const isNext = users.length > limit;
+    const usersToReturn = users.slice(0, limit);
 
     return {
       success: true,
-      data: { users: JSON.parse(JSON.stringify(users)), isNext },
+      data: { users: usersToReturn as User[], isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -99,24 +105,27 @@ export const getUser = cache(async function getUser(
   const { userId } = validationResult?.params!;
 
   try {
-    const user = await User.findById(userId);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
 
     if (!user) {
       throw new NotFoundError("User");
     }
 
-    const totalQuestions = await Question.countDocuments({
-      author: userId,
-    });
-
-    const totalAnswers = await Answer.countDocuments({
-      author: userId,
-    });
+    const [totalQuestions, totalAnswers] = await prisma.$transaction([
+      prisma.question.count({
+        where: { authorId: userId },
+      }),
+      prisma.answer.count({
+        where: { authorId: userId },
+      }),
+    ]);
 
     return {
       success: true,
       data: {
-        user: JSON.parse(JSON.stringify(user)),
+        user: user as User,
         totalQuestions,
         totalAnswers,
       },
@@ -144,21 +153,40 @@ export async function getUserQuestions(
   const limit = pageSize;
 
   try {
-    const totalQuestions = await Question.countDocuments({
-      author: userId,
-    });
+    const [questions, totalQuestions] = await prisma.$transaction([
+      prisma.question.findMany({
+        where: { authorId: userId },
+        include: {
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+          author: {
+            select: {
+              name: true,
+              image: true,
+            },
+          },
+        },
+        skip,
+        take: limit + 1,
+      }),
+      prisma.question.count({
+        where: { authorId: userId },
+      }),
+    ]);
 
-    const questions = await Question.find({ author: userId })
-      .populate("tags", "name")
-      .populate("author", "name image")
-      .skip(skip)
-      .limit(limit);
-
-    const isNext = totalQuestions > skip + questions.length;
+    const isNext = questions.length > limit;
+    const questionsToReturn = questions.slice(0, limit);
 
     return {
       success: true,
-      data: { questions: JSON.parse(JSON.stringify(questions)), isNext },
+      data: { questions: questionsToReturn as Question[], isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -183,18 +211,31 @@ export const getUserAnswers = async (
   const limit = pageSize;
 
   try {
-    const totalAnswers = await Answer.countDocuments({
-      author: userId,
-    });
-    const answers = await Answer.find({ author: userId })
-      .populate("author", "name image")
-      .skip(skip)
-      .limit(limit);
-    const isNext = totalAnswers > skip + answers.length;
+    const [answers, totalAnswers] = await prisma.$transaction([
+      prisma.answer.findMany({
+        where: { authorId: userId },
+        include: {
+          author: {
+            select: {
+              name: true,
+              image: true,
+            },
+          },
+        },
+        skip,
+        take: limit + 1,
+      }),
+      prisma.answer.count({
+        where: { authorId: userId },
+      }),
+    ]);
+
+    const isNext = answers.length > limit;
+    const answersToReturn = answers.slice(0, limit);
 
     return {
       success: true,
-      data: { answers: JSON.parse(JSON.stringify(answers)), isNext },
+      data: { answers: answersToReturn as Answer[], isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -221,36 +262,55 @@ export const getUserTopTags = async (
   const { userId } = validationResult?.params!;
 
   try {
-    const pipeline: PipelineStage[] = [
-      { $match: { author: new Types.ObjectId(userId) } },
-      { $unwind: "$tags" },
-      { $group: { _id: "$tags", count: { $sum: 1 } } },
-      {
-        $lookup: {
-          from: "tags",
-          localField: "_id",
-          foreignField: "_id",
-          as: "tagInfo",
+    // Get all questions by the user with their tags
+    const questions = await prisma.question.findMany({
+      where: { authorId: userId },
+      select: {
+        tags: {
+          select: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
         },
       },
-      { $unwind: "$tagInfo" },
-      { $sort: { count: -1 } },
-      { $limit: 10 },
-      {
-        $project: {
-          _id: "$tagInfo._id",
-          name: "$tagInfo.name",
-          count: 1,
-        },
-      },
-    ];
+    });
 
-    const tags = await Question.aggregate(pipeline);
+    // Count tag occurrences
+    const tagCounts = new Map<string, { id: string; name: string; count: number }>();
+
+    questions.forEach((question) => {
+      question.tags.forEach((qt) => {
+        const existing = tagCounts.get(qt.tag.id);
+        if (existing) {
+          existing.count++;
+        } else {
+          tagCounts.set(qt.tag.id, {
+            id: qt.tag.id,
+            name: qt.tag.name,
+            count: 1,
+          });
+        }
+      });
+    });
+
+    // Convert to array and sort by count
+    const tags = Array.from(tagCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+      .map((tag) => ({
+        _id: tag.id,
+        name: tag.name,
+        count: tag.count,
+      }));
 
     return {
       success: true,
       data: {
-        tags: JSON.parse(JSON.stringify(tags)),
+        tags,
       },
     };
   } catch (error) {
@@ -277,46 +337,41 @@ export async function getUserStats(params: GetUserParams): Promise<
   const { userId } = params;
 
   try {
-    const [questionStats] = await Question.aggregate([
-      { $match: { author: new Types.ObjectId(userId) } },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          upvotes: { $sum: "$upvotes" },
-          views: { $sum: "$views" },
+    const [questionStats, answerStats] = await prisma.$transaction([
+      prisma.question.aggregate({
+        where: { authorId: userId },
+        _count: true,
+        _sum: {
+          upvotes: true,
+          views: true,
         },
-      },
-    ]);
-
-    const [answerStats] = await Answer.aggregate([
-      { $match: { author: new Types.ObjectId(userId) } },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          upvotes: { $sum: "$upvotes" },
+      }),
+      prisma.answer.aggregate({
+        where: { authorId: userId },
+        _count: true,
+        _sum: {
+          upvotes: true,
         },
-      },
+      }),
     ]);
 
     const badges = assignBadges({
       criteria: [
-        { type: "ANSWER_COUNT", count: answerStats.count },
-        { type: "QUESTION_COUNT", count: questionStats.count },
+        { type: "ANSWER_COUNT", count: answerStats._count || 0 },
+        { type: "QUESTION_COUNT", count: questionStats._count || 0 },
         {
           type: "QUESTION_UPVOTES",
-          count: questionStats.upvotes + answerStats.upvotes,
+          count: (questionStats._sum.upvotes || 0) + (answerStats._sum.upvotes || 0),
         },
-        { type: "TOTAL_VIEWS", count: questionStats.views },
+        { type: "TOTAL_VIEWS", count: questionStats._sum.views || 0 },
       ],
     });
 
     return {
       success: true,
       data: {
-        totalQuestions: questionStats.count,
-        totalAnswers: answerStats.count,
+        totalQuestions: questionStats._count,
+        totalAnswers: answerStats._count,
         badges,
       },
     };
@@ -341,13 +396,14 @@ export async function updateUserProfile(
   const { user } = validationResult?.session!;
 
   try {
-    const updatedUser = await User.findByIdAndUpdate(user?.id, params, {
-      new: true,
+    const updatedUser = await prisma.user.update({
+      where: { id: user?.id },
+      data: params,
     });
 
     return {
       success: true,
-      data: { user: JSON.parse(JSON.stringify(updatedUser)) },
+      data: { user: updatedUser as User },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;

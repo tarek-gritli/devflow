@@ -1,6 +1,4 @@
-import { FilterQuery } from "mongoose";
-
-import { Question, Tag } from "@/database";
+"use server";
 
 import action from "../handlers/action";
 import handleError from "../handlers/error";
@@ -8,7 +6,8 @@ import {
   GetTagQuestionsSchema,
   PaginatedSearchParamsSchema,
 } from "../validations";
-import dbConnect from "../mongoose";
+import { prisma } from "../prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 export const getTags = async (
   params: PaginatedSearchParams
@@ -27,46 +26,70 @@ export const getTags = async (
   const skip = (Number(page) - 1) * pageSize;
   const limit = Number(pageSize);
 
-  const filterQuery: FilterQuery<typeof Tag> = {};
+  const whereClause: Prisma.TagWhereInput = {};
 
   if (query) {
-    filterQuery.$or = [{ name: { $regex: query, $options: "i" } }];
+    whereClause.name = {
+      contains: query,
+      mode: "insensitive",
+    };
   }
 
-  let sortCriteria = {};
+  let orderBy: Prisma.TagOrderByWithRelationInput = {};
 
   switch (filter) {
     case "popular":
-      sortCriteria = { questions: -1 };
+      orderBy = { questionTags: { _count: "desc" } };
       break;
     case "recent":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
     case "oldest":
-      sortCriteria = { createdAt: 1 };
+      orderBy = { createdAt: "asc" };
       break;
     case "name":
-      sortCriteria = { name: 1 };
+      orderBy = { name: "asc" };
       break;
     default:
-      sortCriteria = { questions: -1 };
+      orderBy = { questionTags: { _count: "desc" } };
       break;
   }
 
   try {
-    const totalTags = await Tag.countDocuments(filterQuery);
+    const [tags, totalTags] = await prisma.$transaction([
+      prisma.tag.findMany({
+        where: whereClause,
+        orderBy,
+        skip,
+        take: limit + 1,
+        include: {
+          _count: {
+            select: {
+              questionTags: true,
+            },
+          },
+        },
+      }),
+      prisma.tag.count({
+        where: whereClause,
+      }),
+    ]);
 
-    const tags = await Tag.find(filterQuery)
-      .sort(sortCriteria)
-      .skip(skip)
-      .limit(limit);
+    const isNext = tags.length > limit;
+    const tagsToReturn = tags.slice(0, limit);
 
-    const isNext = totalTags > skip + tags.length;
+    // Format tags to include question count
+    const formattedTags = tagsToReturn.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      questions: tag._count.questionTags,
+      createdAt: tag.createdAt,
+    }));
 
     return {
       success: true,
       data: {
-        tags: JSON.parse(JSON.stringify(tags)),
+        tags: formattedTags as Tag[],
         isNext,
       },
     };
@@ -95,35 +118,97 @@ export const getTagQuestions = async (
   const limit = Number(pageSize);
 
   try {
-    const tag = await Tag.findById(tagId);
+    const tag = await prisma.tag.findUnique({
+      where: { id: tagId },
+      include: {
+        _count: {
+          select: {
+            questionTags: true,
+          },
+        },
+      },
+    });
+
     if (!tag) throw new Error("Tag not found");
 
-    const filterQuery: FilterQuery<typeof Question> = {
-      tags: { $in: [tagId] },
+    const whereClause: Prisma.QuestionWhereInput = {
+      tags: {
+        some: {
+          tagId,
+        },
+      },
     };
 
     if (query) {
-      filterQuery.title = { $regex: query, $options: "i" };
+      whereClause.title = {
+        contains: query,
+        mode: "insensitive",
+      };
     }
 
-    const totalQuestions = await Question.countDocuments(filterQuery);
+    const [questions, totalQuestions] = await prisma.$transaction([
+      prisma.question.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          title: true,
+          views: true,
+          upvotes: true,
+          downvotes: true,
+          createdAt: true,
+          author: {
+            select: {
+              name: true,
+              image: true,
+            },
+          },
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              answers: true,
+            },
+          },
+        },
+        skip,
+        take: limit + 1,
+      }),
+      prisma.question.count({
+        where: whereClause,
+      }),
+    ]);
 
-    const questions = await Question.find(filterQuery)
-      .select("_id title views answers upvotes downvotes author createdAt")
-      .populate([
-        { path: "author", select: "name image" },
-        { path: "tags", select: "name" },
-      ])
-      .skip(skip)
-      .limit(limit);
+    const isNext = questions.length > limit;
+    const questionsToReturn = questions.slice(0, limit);
 
-    const isNext = totalQuestions > skip + questions.length;
+    const formattedQuestions = questionsToReturn.map((q) => ({
+      id: q.id,
+      title: q.title,
+      views: q.views,
+      upvotes: q.upvotes,
+      downvotes: q.downvotes,
+      createdAt: q.createdAt,
+      author: q.author,
+      tags: q.tags.map((t) => ({ name: t.tag.name })),
+      answers: q._count.answers,
+    }));
 
     return {
       success: true,
       data: {
-        tag: JSON.parse(JSON.stringify(tag)),
-        questions: JSON.parse(JSON.stringify(questions)),
+        tag: {
+          id: tag.id,
+          name: tag.name,
+          questions: tag._count.questionTags,
+        } as Tag,
+        questions: formattedQuestions as Question[],
         isNext,
       },
     };
@@ -134,12 +219,31 @@ export const getTagQuestions = async (
 
 export const getTopTags = async (): Promise<ActionResponse<Tag[]>> => {
   try {
-    await dbConnect();
-    const tags = await Tag.find().sort({ questions: -1 }).limit(5);
+    const tags = await prisma.tag.findMany({
+      orderBy: {
+        questionTags: {
+          _count: "desc",
+        },
+      },
+      take: 5,
+      include: {
+        _count: {
+          select: {
+            questionTags: true,
+          },
+        },
+      },
+    });
+
+    const formattedTags = tags.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      questions: tag._count.questionTags,
+    }));
 
     return {
       success: true,
-      data: JSON.parse(JSON.stringify(tags)),
+      data: formattedTags as Tag[],
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;

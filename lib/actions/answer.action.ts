@@ -130,7 +130,7 @@ export async function getAnswers(params: GetAnswersParams): Promise<
     return {
       success: true,
       data: {
-        answers: JSON.parse(JSON.stringify(answers)),
+        answers: answers,
         isNext,
         totalAnswers,
       },

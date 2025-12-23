@@ -1,13 +1,9 @@
 "use server";
 
-import mongoose, { FilterQuery, Types } from "mongoose";
-
-import Question, { IQuestionDocument } from "@/database/question.model";
-import TagQuestion from "@/database/tag-question";
-import Tag, { ITagDocument } from "@/database/tag.model";
-
+import { after } from "next/server";
 import action from "../handlers/action";
 import handleError from "../handlers/error";
+import { prisma } from "../prisma";
 import {
   AskQuestionSchema,
   DeleteQuestionSchema,
@@ -16,14 +12,13 @@ import {
   IncrementViewsSchema,
   PaginatedSearchParamsSchema,
 } from "../validations";
-import dbConnect from "../mongoose";
-import { NotFoundError, UnauthorizedError } from "../http-errors";
-import { Answer, Collection, Interaction, Vote } from "@/database";
-import { revalidatePath } from "next/cache";
 import { createInteraction } from "./interaction.action";
-import { after } from "next/server";
-import { auth } from "@/auth";
+import { NotFoundError, UnauthorizedError } from "../http-errors";
 import { cache } from "react";
+import { Prisma, Question } from "@/generated/prisma/client";
+import { auth } from "@/auth";
+import { revalidatePath } from "next/cache";
+import ROUTES from "@/constants/routes";
 
 export async function createQuestion(
   params: CreateQuestionParams
@@ -37,71 +32,71 @@ export async function createQuestion(
   if (validationResult instanceof Error) {
     return handleError(validationResult) as ErrorResponse;
   }
-
-  const { title, content, tags } = validationResult!.params;
-  const userId = validationResult?.session?.user?.id;
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const { title, content, tags } = validationResult?.params!;
+  const userId = validationResult?.session?.user?.id!;
 
   try {
-    const [question] = await Question.create(
-      [{ title, content, author: userId }],
-      { session }
-    );
-
-    if (!question) {
-      throw new Error("Failed to create question");
-    }
-
-    const tagIds: mongoose.Types.ObjectId[] = [];
-    const tagQuestionDocuments = [];
-
-    for (const tag of tags) {
-      const existingTag = await Tag.findOneAndUpdate(
-        { name: { $regex: new RegExp(`^${tag}$`, "i") } },
-        { $setOnInsert: { name: tag }, $inc: { questions: 1 } },
-        { upsert: true, new: true, session }
-      );
-
-      tagIds.push(existingTag._id);
-      tagQuestionDocuments.push({
-        tag: existingTag._id,
-        question: question._id,
+    const question = await prisma.$transaction(async (tx) => {
+      const question = await tx.question.create({
+        data: {
+          title,
+          content,
+          authorId: userId,
+        },
       });
-    }
 
-    await TagQuestion.insertMany(tagQuestionDocuments, { session });
+      if (!question) {
+        throw new Error("Failed to create question");
+      }
 
-    await Question.findByIdAndUpdate(
-      question._id,
-      { $push: { tags: { $each: tagIds } } },
-      { session }
-    );
+      for (const tagName of tags) {
+        let tag = await tx.tag.findFirst({
+          where: {
+            name: {
+              equals: tagName,
+              mode: "insensitive",
+            },
+          },
+        });
 
+        if (!tag) {
+          tag = await tx.tag.create({
+            data: {
+              name: tagName,
+            },
+          });
+        }
+
+        await tx.questionTag.create({
+          data: {
+            tagId: tag.id,
+            questionId: question.id,
+          },
+        });
+      }
+
+      return question;
+    });
     after(async () => {
       await createInteraction({
         action: "post",
-        actionId: question._id.toString(),
+        actionId: question.id.toString(),
         actionTarget: "question",
-        authorId: userId as string,
+        authorId: userId,
       });
     });
-
-    await session.commitTransaction();
-
-    return { success: true, data: JSON.parse(JSON.stringify(question)) };
+    return {
+      success: true,
+      data: question,
+    };
   } catch (error) {
-    await session.abortTransaction();
     return handleError(error) as ErrorResponse;
-  } finally {
-    await session.endSession();
   }
 }
 
 export async function editQuestion(
   params: EditQuestionParams
-): Promise<ActionResponse<IQuestionDocument>> {
+): Promise<ActionResponse<Question>> {
   const validationResult = await action({
     params,
     schema: EditQuestionSchema,
@@ -115,124 +110,160 @@ export async function editQuestion(
   const { title, content, tags, questionId } = validationResult!.params;
   const userId = validationResult?.session?.user?.id;
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const question = await Question.findById(questionId).populate("tags");
+    const question = await prisma.question.findUnique({
+      where: {
+        id: questionId,
+      },
+      include: {
+        tags: {
+          select: {
+            tag: true,
+          },
+        },
+      },
+    });
 
     if (!question) {
-      throw new Error("Question not found");
+      throw new NotFoundError("Question");
     }
 
-    if (question.author.toString() !== userId) {
-      throw new Error("Unauthorized");
+    if (question.authorId !== userId) {
+      throw new UnauthorizedError();
     }
 
-    if (question.title !== title || question.content !== content) {
-      question.title = title;
-      question.content = content;
-      await question.save({ session });
-    }
-
-    const tagsToAdd = tags.filter(
-      (tag) =>
-        !question.tags.some((t: ITagDocument) =>
-          t.name.toLowerCase().includes(tag.toLowerCase())
-        )
-    );
-    const tagsToRemove = question.tags.filter(
-      (tag: ITagDocument) =>
-        !tags.some((t) => t.toLowerCase() === tag.name.toLowerCase())
-    );
-    const newTagDocuments = [];
-
-    if (tagsToAdd.length > 0) {
-      for (const tag of tagsToAdd) {
-        const existingTag = await Tag.findOneAndUpdate(
-          { name: { $regex: `^${tag}$`, $options: "i" } },
-          { $setOnInsert: { name: tag }, $inc: { questions: 1 } },
-          { upsert: true, new: true, session }
-        );
-
-        if (existingTag) {
-          newTagDocuments.push({
-            tag: existingTag._id,
-            question: questionId,
-          });
-
-          question.tags.push(existingTag._id);
-        }
+    const updatedQuestion = await prisma.$transaction(async (tx) => {
+      const updatedData: { title?: string; content?: string } = {};
+      if (question.title !== title) {
+        updatedData.title = title;
       }
-    }
+      if (question.content !== content) {
+        updatedData.content = content;
+      }
 
-    if (tagsToRemove.length > 0) {
-      const tagIdsToRemove = tagsToRemove.map((tag: Tag) => tag?._id);
+      let updatedQuestion = question;
+      if (Object.keys(updatedData).length > 0) {
+        updatedQuestion = await tx.question.update({
+          where: {
+            id: question.id,
+          },
+          data: updatedData,
+        });
+      }
 
-      await Tag.updateMany(
-        { _id: { $in: tagIdsToRemove } },
-        { $inc: { questions: -1 } },
-        { session }
-      );
-
-      await TagQuestion.deleteMany(
-        { tag: { $in: tagIdsToRemove }, question: questionId },
-        { session }
-      );
-
-      question.tags = question.tags.filter(
-        (tag: mongoose.Types.ObjectId) =>
-          !tagIdsToRemove.some((id: mongoose.Types.ObjectId) =>
-            id.equals(tag._id)
+      const tagsToAdd = tags.filter(
+        (tag) =>
+          !question.tags.some((t) =>
+            t.tag.name.toLowerCase().includes(tag.toLowerCase())
           )
       );
-    }
 
-    if (newTagDocuments.length > 0) {
-      await TagQuestion.insertMany(newTagDocuments, { session });
-    }
+      const tagsToRemove = question.tags.filter(
+        (tag) =>
+          !tags.some((t) => t.toLowerCase() === tag.tag.name.toLowerCase())
+      );
 
-    await question.save({ session });
-    await session.commitTransaction();
+      // Add new tags
+      if (tagsToAdd.length > 0) {
+        for (const tagName of tagsToAdd) {
+          let tag = await tx.tag.findFirst({
+            where: {
+              name: {
+                equals: tagName,
+                mode: "insensitive",
+              },
+            },
+          });
 
-    return { success: true, data: JSON.parse(JSON.stringify(question)) };
+          if (!tag) {
+            tag = await tx.tag.create({
+              data: {
+                name: tagName,
+              },
+            });
+          }
+
+          await tx.questionTag.create({
+            data: {
+              tagId: tag.id,
+              questionId: question.id,
+            },
+          });
+        }
+      }
+
+      // Remove old tags
+      if (tagsToRemove.length > 0) {
+        const tagIdsToRemove = tagsToRemove.map((tag) => tag.tag.id);
+
+        await tx.questionTag.deleteMany({
+          where: {
+            questionId: question.id,
+            tagId: { in: tagIdsToRemove },
+          },
+        });
+      }
+
+      return updatedQuestion;
+    });
+
+    revalidatePath(ROUTES.QUESTION(questionId));
+
+    return { success: true, data: updatedQuestion };
   } catch (error) {
-    await session.abortTransaction();
     return handleError(error) as ErrorResponse;
-  } finally {
-    await session.endSession();
   }
 }
 
-export const getQuestion = cache(async function getQuestion(
-  params: GetQuestionParams
-): Promise<ActionResponse<Question>> {
-  const validationResult = await action({
-    params,
-    schema: GetQuestionSchema,
-    authorize: true,
-  });
+export const getQuestion = cache(
+  async (params: GetQuestionParams): Promise<ActionResponse<Question>> => {
+    const validationResult = await action({
+      params,
+      schema: GetQuestionSchema,
+      authorize: true,
+    });
 
-  if (validationResult instanceof Error) {
-    return handleError(validationResult) as ErrorResponse;
-  }
-
-  const { questionId } = validationResult!.params;
-
-  try {
-    const question = await Question.findById(questionId)
-      .populate("tags", "_id name")
-      .populate("author", "_id name image");
-
-    if (!question) {
-      throw new Error("Question not found");
+    if (validationResult instanceof Error) {
+      return handleError(validationResult) as ErrorResponse;
     }
 
-    return { success: true, data: JSON.parse(JSON.stringify(question)) };
-  } catch (error) {
-    return handleError(error) as ErrorResponse;
+    const { questionId } = validationResult!.params;
+    try {
+      const question = await prisma.question.findUnique({
+        where: {
+          id: questionId,
+        },
+        include: {
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  name: true,
+                  id: true,
+                },
+              },
+            },
+          },
+          author: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
+        },
+      });
+
+      if (!question) {
+        throw new NotFoundError("Question");
+      }
+
+      return { success: true, data: question };
+    } catch (error) {
+      return handleError(error) as ErrorResponse;
+    }
   }
-});
+);
 
 export async function getQuestions(
   params: PaginatedSearchParams
@@ -246,11 +277,11 @@ export async function getQuestions(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { page = 1, pageSize = 10, query, filter } = params;
+  const { page = 1, pageSize = 10, query, filter } = validationResult?.params!;
   const skip = (Number(page) - 1) * pageSize;
   const limit = Number(pageSize);
 
-  const filterQuery: FilterQuery<typeof Question> = {};
+  let whereClause: Prisma.QuestionWhereInput = {};
 
   if (filter === "recommended") {
     const session = await auth();
@@ -271,46 +302,72 @@ export async function getQuestions(
   }
 
   if (query) {
-    filterQuery.$or = [
-      { title: { $regex: query, $options: "i" } },
-      { content: { $regex: query, $options: "i" } },
+    whereClause.OR = [
+      {
+        title: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
+      {
+        content: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
     ];
   }
 
-  let sortCriteria = {};
+  let orderBy: Prisma.QuestionOrderByWithRelationInput = {};
 
   switch (filter) {
     case "newest":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
     case "unanswered":
-      filterQuery.answers = 0;
-      sortCriteria = { createdAt: -1 };
+      whereClause.answers = { none: {} };
+      orderBy = { createdAt: "desc" };
       break;
     case "popular":
-      sortCriteria = { upvotes: -1 };
+      orderBy = { upvotes: "desc" };
       break;
     default:
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
   }
 
   try {
-    const totalQuestions = await Question.countDocuments(filterQuery);
+    const questions = await prisma.question.findMany({
+      where: whereClause,
+      include: {
+        tags: {
+          select: {
+            tag: {
+              select: {
+                name: true,
+                id: true,
+              },
+            },
+          },
+        },
+        author: {
+          select: {
+            name: true,
+            image: true,
+          },
+        },
+      },
+      orderBy,
+      skip,
+      take: limit + 1,
+    });
 
-    const questions = await Question.find(filterQuery)
-      .populate("tags", "name")
-      .populate("author", "name image")
-      .lean()
-      .sort(sortCriteria)
-      .skip(skip)
-      .limit(limit);
-
-    const isNext = totalQuestions > skip + questions.length;
+    const isNext = questions.length > limit;
+    const questionsToReturn = questions.slice(0, limit);
 
     return {
       success: true,
-      data: { questions: JSON.parse(JSON.stringify(questions)), isNext },
+      data: { questions: questionsToReturn, isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -329,37 +386,47 @@ export async function incrementViews(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { questionId } = validationResult!.params;
-
+  const { questionId } = validationResult?.params!;
   try {
-    const question = await Question.findById(questionId);
-
+    const question = await prisma.question.findUnique({
+      where: {
+        id: questionId,
+      },
+    });
     if (!question) {
-      throw new Error("Question not found");
+      throw new NotFoundError("Question");
     }
 
-    question.views += 1;
-
-    await question.save();
+    const updatedQuestion = await prisma.question.update({
+      where: {
+        id: questionId,
+      },
+      data: {
+        views: { increment: 1 },
+      },
+    });
 
     return {
       success: true,
-      data: { views: question.views },
+      data: {
+        views: updatedQuestion.views,
+      },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
   }
 }
 
-export async function getHotQuestions(): Promise<ActionResponse<Question[]>> {
+export async function getHotQuestions(): Promise<ActionResponse<Question>> {
   try {
-    await dbConnect();
-    const questions = await Question.find()
-      .sort({ views: -1, upvotes: -1 })
-      .limit(10);
+    const questions = await prisma.question.findMany({
+      orderBy: [{ upvotes: "desc" }, { views: "desc" }],
+      take: 10,
+    });
+
     return {
       success: true,
-      data: JSON.parse(JSON.stringify(questions)),
+      data: questions,
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -379,73 +446,46 @@ export async function deleteQuestion(
     return handleError(validationResult) as ErrorResponse;
   }
 
-  const { questionId } = validationResult!.params;
+  const { questionId } = validationResult?.params!;
   const userId = validationResult?.session?.user?.id;
 
-  const session = await mongoose.startSession();
-
   try {
-    session.startTransaction();
-    const question = await Question.findById(questionId).session(session);
+    const question = await prisma.question.findUnique({
+      where: {
+        id: questionId,
+      },
+    });
     if (!question) {
       throw new NotFoundError("Question");
     }
 
-    if (question.author.toString() !== userId) {
+    if (question.authorId !== userId) {
       throw new UnauthorizedError(
         "You are not authorized to delete this question"
       );
     }
 
-    await Collection.deleteMany({ question: question._id }).session(session);
-    await TagQuestion.deleteMany({ question: question._id }).session(session);
-
-    if (question.tags.length > 0) {
-      await Tag.updateMany(
-        { _id: { $in: question.tags } },
-        { $inc: { questions: -1 } },
-        { session }
-      );
-    }
-
-    await Vote.deleteMany({ id: question._id, type: "question" }).session(
-      session
-    );
-
-    const answers = await Answer.find({ question: questionId }).session(
-      session
-    );
-
-    if (answers.length > 0) {
-      await Answer.deleteMany({ question: questionId }).session(session);
-
-      await Vote.deleteMany({
-        id: { $in: answers.map((answer) => answer.id) },
-        type: "answer",
-      }).session(session);
-    }
-
-    await Question.findByIdAndDelete(questionId).session(session);
-
-    after(async () => {
-      await createInteraction({
-        action: "delete",
-        actionId: questionId,
-        actionTarget: "question",
-        authorId: userId as string,
-      });
+    await prisma.question.delete({
+      where: {
+        id: questionId,
+      },
     });
 
-    await session.commitTransaction();
+    after(
+      async () =>
+        await createInteraction({
+          action: "delete",
+          actionId: questionId,
+          actionTarget: "question",
+          authorId: userId,
+        })
+    );
 
     revalidatePath(`/profile/${userId}`);
 
     return { success: true };
   } catch (error) {
-    await session.abortTransaction();
     return handleError(error) as ErrorResponse;
-  } finally {
-    await session.endSession();
   }
 }
 
@@ -455,55 +495,88 @@ async function getRecommendedQuestions({
   skip,
   limit,
 }: RecommendationParams) {
-  const interactions = await Interaction.find({
-    user: new Types.ObjectId(userId),
-    actionType: "question",
-    actions: { $in: ["upvote", "bookmark", "view", "post"] },
-  })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
+  try {
+    const uniqueTagIdsQuery = prisma.$queryRaw<Array<{ tag_id: string }>>`
+      SELECT DISTINCT qt.tag_id
+      FROM questions_tags qt
+      INNER JOIN question_interactions qi ON qt.question_id = qi.question_id
+      WHERE qi.author_id = ${userId}::uuid
+        AND qi.action IN ('upvote', 'bookmark', 'view', 'post')
+      ORDER BY qt.tag_id
+      LIMIT 50
+    `;
 
-  const interactedQuestionIds = interactions.map((i) => i.actionId);
+    const interactedIdsQuery = prisma.$queryRaw<Array<{ question_id: string }>>`
+      SELECT DISTINCT question_id
+      FROM question_interactions
+      WHERE author_id = ${userId}::uuid
+        AND action IN ('upvote', 'bookmark', 'view', 'post')
+      LIMIT 100
+    `;
 
-  const interactedQuestions = await Question.find({
-    _id: { $in: interactedQuestionIds },
-  }).select("tags");
+    const [uniqueTagIdsResult, interactedIdsResult] = await Promise.all([
+      uniqueTagIdsQuery,
+      interactedIdsQuery,
+    ]);
 
-  const allTags = interactedQuestions.flatMap((q) =>
-    q.tags.map((tag: Types.ObjectId) => tag.toString())
-  );
+    const uniqueTagIds = uniqueTagIdsResult.map((row) => row.tag_id);
+    const interactedQuestionIds = interactedIdsResult.map(
+      (row) => row.question_id
+    );
 
-  const uniqueTagIds = [...new Set(allTags)];
+    if (uniqueTagIds.length === 0) {
+      return { questions: [], isNext: false };
+    }
 
-  const recommendedQuery: FilterQuery<typeof Question> = {
-    _id: { $nin: interactedQuestionIds },
-    author: { $ne: new Types.ObjectId(userId) },
-    tags: { $in: uniqueTagIds.map((id) => new Types.ObjectId(id)) },
-  };
+    const recommendedQuery: Prisma.QuestionWhereInput = {
+      id: { notIn: interactedQuestionIds },
+      authorId: { not: userId },
+      tags: {
+        some: {
+          tagId: { in: uniqueTagIds },
+        },
+      },
+    };
 
-  if (query) {
-    recommendedQuery.$or = [
-      { title: { $regex: query, $options: "i" } },
-      { content: { $regex: query, $options: "i" } },
-    ];
+    if (query) {
+      recommendedQuery.OR = [
+        { title: { contains: query, mode: "insensitive" } },
+        { content: { contains: query, mode: "insensitive" } },
+      ];
+    }
+
+    const questions = await prisma.question.findMany({
+      where: recommendedQuery,
+      include: {
+        tags: {
+          select: {
+            tag: {
+              select: {
+                name: true,
+                id: true,
+              },
+            },
+          },
+        },
+        author: {
+          select: {
+            name: true,
+            image: true,
+          },
+        },
+      },
+      orderBy: [{ upvotes: "desc" }, { views: "desc" }],
+      skip,
+      take: limit + 1,
+    });
+
+    const isNext = questions.length > limit;
+
+    return {
+      questions: questions.slice(0, limit),
+      isNext,
+    };
+  } catch (error) {
+    return handleError(error) as ErrorResponse;
   }
-
-  const total = await Question.countDocuments(recommendedQuery);
-
-  const questions = await Question.find(recommendedQuery)
-    .populate("tags", "name")
-    .populate("author", "name image")
-    .lean()
-    .sort({ upvotes: -1, views: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
-
-  const isNext = total > skip + questions.length;
-
-  return {
-    questions: JSON.parse(JSON.stringify(questions)),
-    isNext,
-  };
 }
