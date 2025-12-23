@@ -1,10 +1,9 @@
 "use server";
 
-import { Answer, Question, Tag, User } from "@/database";
-
 import action from "../handlers/action";
 import handleError from "../handlers/error";
 import { GlobalSearchSchema } from "../validations";
+import { prisma } from "../prisma";
 
 export async function globalSearch(params: GlobalSearchParams) {
   try {
@@ -18,63 +17,190 @@ export async function globalSearch(params: GlobalSearchParams) {
     }
 
     const { query, type } = params;
-    const regexQuery = { $regex: query, $options: "i" };
 
-    let results = [];
-
-    const modelsAndTypes = [
-      { model: Question, searchField: "title", type: "question" },
-      { model: User, searchField: "name", type: "user" },
-      { model: Answer, searchField: "content", type: "answer" },
-      { model: Tag, searchField: "name", type: "tag" },
-    ];
+    let results: Array<{ title: string; type: string; id: string }> = [];
 
     const typeLower = type?.toLowerCase();
 
     const SearchableTypes = ["question", "answer", "user", "tag"];
     if (!typeLower || !SearchableTypes.includes(typeLower)) {
       // If no type is specified, search in all models
-      for (const { model, searchField, type } of modelsAndTypes) {
-        const queryResults = await model
-          .find({ [searchField]: regexQuery })
-          .limit(2);
+      const [questions, users, answers, tags] = await Promise.all([
+        prisma.question.findMany({
+          where: {
+            title: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+          },
+          take: 2,
+        }),
+        prisma.user.findMany({
+          where: {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+          take: 2,
+        }),
+        prisma.answer.findMany({
+          where: {
+            content: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            questionId: true,
+          },
+          take: 2,
+        }),
+        prisma.tag.findMany({
+          where: {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+          take: 2,
+        }),
+      ]);
 
-        results.push(
-          ...queryResults.map((item) => ({
-            title:
-              type === "answer"
-                ? `Answers containing ${query}`
-                : item[searchField],
-            type,
-            id: type === "answer" ? item.question : item._id,
-          }))
-        );
-      }
+      results.push(
+        ...questions.map((item) => ({
+          title: item.title,
+          type: "question",
+          id: item.id,
+        })),
+        ...users.map((item) => ({
+          title: item.name,
+          type: "user",
+          id: item.id,
+        })),
+        ...answers.map((item) => ({
+          title: `Answers containing ${query}`,
+          type: "answer",
+          id: item.questionId,
+        })),
+        ...tags.map((item) => ({
+          title: item.name,
+          type: "tag",
+          id: item.id,
+        }))
+      );
     } else {
       // Search in the specified model type
-      const modelInfo = modelsAndTypes.find((item) => item.type === type);
+      switch (typeLower) {
+        case "question":
+          const questions = await prisma.question.findMany({
+            where: {
+              title: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            select: {
+              id: true,
+              title: true,
+            },
+            take: 8,
+          });
 
-      if (!modelInfo) {
-        throw new Error("Invalid search type");
+          results = questions.map((item) => ({
+            title: item.title,
+            type: "question",
+            id: item.id,
+          }));
+          break;
+
+        case "user":
+          const users = await prisma.user.findMany({
+            where: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+            take: 8,
+          });
+
+          results = users.map((item) => ({
+            title: item.name,
+            type: "user",
+            id: item.id,
+          }));
+          break;
+
+        case "answer":
+          const answers = await prisma.answer.findMany({
+            where: {
+              content: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            select: {
+              id: true,
+              questionId: true,
+            },
+            take: 8,
+          });
+
+          results = answers.map((item) => ({
+            title: `Answers containing ${query}`,
+            type: "answer",
+            id: item.questionId,
+          }));
+          break;
+
+        case "tag":
+          const tags = await prisma.tag.findMany({
+            where: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+            take: 8,
+          });
+
+          results = tags.map((item) => ({
+            title: item.name,
+            type: "tag",
+            id: item.id,
+          }));
+          break;
+
+        default:
+          throw new Error("Invalid search type");
       }
-
-      const queryResults = await modelInfo.model
-        .find({ [modelInfo.searchField]: regexQuery })
-        .limit(8);
-
-      results = queryResults.map((item) => ({
-        title:
-          type === "answer"
-            ? `Answers containing ${query}`
-            : item[modelInfo.searchField],
-        type,
-        id: type === "answer" ? item.question : item._id,
-      }));
     }
 
     return {
       success: true,
-      data: JSON.parse(JSON.stringify(results)),
+      data: results,
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
