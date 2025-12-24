@@ -417,7 +417,7 @@ export async function incrementViews(
   }
 }
 
-export async function getHotQuestions(): Promise<ActionResponse<Question>> {
+export async function getHotQuestions(): Promise<ActionResponse<Question[]>> {
   try {
     const questions = await prisma.question.findMany({
       orderBy: [{ upvotes: "desc" }, { views: "desc" }],

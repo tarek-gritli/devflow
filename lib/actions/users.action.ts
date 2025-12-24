@@ -246,7 +246,7 @@ export const getUserTopTags = async (
   params: GetUserTagsParams
 ): Promise<
   ActionResponse<{
-    tags: { _id: string; name: string; count: number }[];
+    tags: { id: string; name: string; count: number }[];
   }>
 > => {
   const validationResult = await action({
@@ -302,7 +302,7 @@ export const getUserTopTags = async (
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
       .map((tag) => ({
-        _id: tag.id,
+        id: tag.id,
         name: tag.name,
         count: tag.count,
       }));

@@ -17,7 +17,7 @@ interface Props extends Answer {
 }
 
 const AnswerCard = ({
-  _id,
+  id,
   author,
   content,
   createdAt,
@@ -28,29 +28,29 @@ const AnswerCard = ({
   showReadMore = false,
   showActionBtns = false,
 }: Props) => {
-  const hasVotedPromise = hasVoted({ id: _id, type: "answer" });
+  const hasVotedPromise = hasVoted({ id, type: "answer" });
   return (
     <article
       className={cn("light-border border-b py-10 relative", containerClasses)}
     >
-      <span id={`answer-${_id}`} className="hash-span" />
+      <span id={`answer-${id}`} className="hash-span" />
       {showActionBtns && (
         <div className="background-light800 flex-center absolute -right-2 -top-5 size-9 rounded-full">
-          <EditDeleteAction type="Answer" itemId={_id} />
+          <EditDeleteAction type="Answer" itemId={id} />
         </div>
       )}
 
       <div className="mb-5 flex flex-col-reverse justify-between gap-5 sm:flex-row sm:items-center sm:gap-2">
         <div className="flex flex-1 items-start gap-1 sm:items-center">
           <UserAvatar
-            id={author._id}
+            id={author.id}
             name={author.name}
             imageUrl={author.image}
             className="size-5 rounded-full object-cover max-sm:mt-2"
           />
 
           <Link
-            href={ROUTES.PROFILE(author._id)}
+            href={ROUTES.PROFILE(author.id)}
             className="flex flex-col max-sm:ml-1 sm:flex-row sm:items-center"
           >
             <p className="body-semibold text-dark300_light700">
@@ -67,7 +67,7 @@ const AnswerCard = ({
         <div className="flex justify-end">
           <Suspense fallback={<div>Loading...</div>}>
             <Votes
-              id={_id}
+              id={id}
               type="answer"
               upvotes={upvotes}
               downvotes={downvotes}
@@ -81,7 +81,7 @@ const AnswerCard = ({
 
       {showReadMore && (
         <Link
-          href={`/questions/${question}#answer-${_id}`}
+          href={`/questions/${question}#answer-${id}`}
           className="body-semibold relative z-10 font-space-grotesk text-primary-500"
         >
           <p className="mt-1">Read more...</p>
