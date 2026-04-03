@@ -1,56 +1,19 @@
 "use server";
 
-import mongoose, { ClientSession } from "mongoose";
+import { revalidatePath } from "next/cache";
 
-import { Answer, Question, Vote } from "@/database";
+import ROUTES from "@/constants/routes";
 
 import action from "../handlers/action";
 import handleError from "../handlers/error";
 import {
   CreateVoteSchema,
-  UpdateVoteCountSchema,
   HasVotedSchema,
 } from "../validations";
-import { revalidatePath } from "next/cache";
-import ROUTES from "@/constants/routes";
 import { after } from "next/server";
 import { createInteraction } from "./interaction.action";
-
-async function updateVoteCount(
-  params: UpdateVoteCountParams,
-  session?: ClientSession
-): Promise<ActionResponse> {
-  const validationResult = await action({
-    params,
-    schema: UpdateVoteCountSchema,
-  });
-
-  if (validationResult instanceof Error) {
-    return handleError(validationResult) as ErrorResponse;
-  }
-
-  const { id, type, voteType, change } = validationResult?.params!;
-
-  const Model = type === "question" ? Question : Answer;
-  const voteField = voteType === "upvote" ? "upvotes" : "downvotes";
-
-  try {
-    const result = await Model.findByIdAndUpdate(
-      id,
-      { $inc: { [voteField]: change } },
-      { new: true, session }
-    );
-
-    if (!result)
-      return handleError(
-        new Error("Failed to update vote count")
-      ) as ErrorResponse;
-
-    return { success: true };
-  } catch (error) {
-    return handleError(error) as ErrorResponse;
-  }
-}
+import { prisma } from "../prisma";
+import { VoteDirection } from "@/generated/prisma/client";
 
 export async function createVote(
   params: CreateVoteParams
@@ -70,76 +33,171 @@ export async function createVote(
 
   if (!userId) return handleError(new Error("Unauthorized")) as ErrorResponse;
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const Model = type === "question" ? Question : Answer;
+    const isQuestion = type === "question";
+    const voteDirection: VoteDirection =
+      voteType === "upvote" ? "upvote" : "downvote";
 
-    const contentDoc = await Model.findById(id).session(session);
-    if (!contentDoc) throw new Error("Content not found");
+    await prisma.$transaction(async (tx) => {
+      // Get the content to find the author
+      const content = isQuestion
+        ? await tx.question.findUnique({
+            where: { id },
+            select: { authorId: true },
+          })
+        : await tx.answer.findUnique({
+            where: { id },
+            select: { authorId: true },
+          });
 
-    const contentAuthorId = contentDoc.author.toString();
+      if (!content) throw new Error("Content not found");
 
-    const existingVote = await Vote.findOne({
-      author: userId,
-      id,
-      type,
-    }).session(session);
+      const contentAuthorId = content.authorId;
 
-    if (existingVote) {
-      if (existingVote.voteType === voteType) {
-        // If the user has already voted with the same voteType, remove the vote
-        await Vote.deleteOne({ _id: existingVote._id }).session(session);
-        await updateVoteCount({ id, type, voteType, change: -1 }, session);
-      } else {
-        // If the user has already voted with a different voteType, update the vote
-        await Vote.findByIdAndUpdate(
-          existingVote._id,
-          { voteType },
-          { new: true, session }
-        );
-        await updateVoteCount(
-          { id, type, voteType: existingVote.voteType, change: -1 },
-          session
-        );
-        await updateVoteCount({ id, type, voteType, change: 1 }, session);
-      }
-    } else {
-      await Vote.create(
-        [
-          {
-            author: userId,
-            id,
-            type,
-            voteType,
+      if (isQuestion) {
+        // Handle question vote
+        const existingVote = await tx.questionVote.findUnique({
+          where: {
+            questionId_userId: {
+              questionId: id,
+              userId,
+            },
           },
-        ],
-        {
-          session,
-        }
-      );
-      await updateVoteCount({ id, type, voteType, change: 1 }, session);
-    }
+        });
 
-    after(async () => {
-      await createInteraction({
-        action: voteType,
-        actionId: id,
-        actionTarget: type,
-        authorId: contentAuthorId,
+        if (existingVote) {
+          if (existingVote.voteDirection === voteDirection) {
+            // Remove vote if clicking the same vote type
+            await tx.questionVote.delete({
+              where: {
+                id: existingVote.id,
+              },
+            });
+
+            // Decrement vote count
+            const updateField =
+              voteType === "upvote" ? "upvotes" : "downvotes";
+            await tx.question.update({
+              where: { id },
+              data: { [updateField]: { decrement: 1 } },
+            });
+          } else {
+            // Switch vote direction
+            await tx.questionVote.update({
+              where: { id: existingVote.id },
+              data: { voteDirection },
+            });
+
+            // Update vote counts - decrement old, increment new
+            const oldField =
+              existingVote.voteDirection === "upvote" ? "upvotes" : "downvotes";
+            const newField = voteType === "upvote" ? "upvotes" : "downvotes";
+
+            await tx.question.update({
+              where: { id },
+              data: {
+                [oldField]: { decrement: 1 },
+                [newField]: { increment: 1 },
+              },
+            });
+          }
+        } else {
+          // Create new vote
+          await tx.questionVote.create({
+            data: {
+              userId,
+              questionId: id,
+              voteDirection,
+            },
+          });
+
+          // Increment vote count
+          const updateField = voteType === "upvote" ? "upvotes" : "downvotes";
+          await tx.question.update({
+            where: { id },
+            data: { [updateField]: { increment: 1 } },
+          });
+        }
+      } else {
+        // Handle answer vote
+        const existingVote = await tx.answerVote.findUnique({
+          where: {
+            answerId_userId: {
+              answerId: id,
+              userId,
+            },
+          },
+        });
+
+        if (existingVote) {
+          if (existingVote.voteDirection === voteDirection) {
+            // Remove vote if clicking the same vote type
+            await tx.answerVote.delete({
+              where: {
+                id: existingVote.id,
+              },
+            });
+
+            // Decrement vote count
+            const updateField =
+              voteType === "upvote" ? "upvotes" : "downvotes";
+            await tx.answer.update({
+              where: { id },
+              data: { [updateField]: { decrement: 1 } },
+            });
+          } else {
+            // Switch vote direction
+            await tx.answerVote.update({
+              where: { id: existingVote.id },
+              data: { voteDirection },
+            });
+
+            // Update vote counts - decrement old, increment new
+            const oldField =
+              existingVote.voteDirection === "upvote" ? "upvotes" : "downvotes";
+            const newField = voteType === "upvote" ? "upvotes" : "downvotes";
+
+            await tx.answer.update({
+              where: { id },
+              data: {
+                [oldField]: { decrement: 1 },
+                [newField]: { increment: 1 },
+              },
+            });
+          }
+        } else {
+          // Create new vote
+          await tx.answerVote.create({
+            data: {
+              userId,
+              answerId: id,
+              voteDirection,
+            },
+          });
+
+          // Increment vote count
+          const updateField = voteType === "upvote" ? "upvotes" : "downvotes";
+          await tx.answer.update({
+            where: { id },
+            data: { [updateField]: { increment: 1 } },
+          });
+        }
+      }
+
+      after(async () => {
+        await createInteraction({
+          action: voteType,
+          actionId: id,
+          actionTarget: type,
+          authorId: contentAuthorId,
+        });
       });
     });
-
-    await session.commitTransaction();
-    session.endSession();
 
     revalidatePath(ROUTES.QUESTION(id));
 
     return { success: true };
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     return handleError(error) as ErrorResponse;
   }
 }
@@ -161,11 +219,25 @@ export async function hasVoted(
   const userId = validationResult?.session?.user?.id;
 
   try {
-    const vote = await Vote.findOne({
-      author: userId,
-      id,
-      type,
-    });
+    const isQuestion = type === "question";
+
+    const vote = isQuestion
+      ? await prisma.questionVote.findUnique({
+          where: {
+            questionId_userId: {
+              questionId: id,
+              userId: userId!,
+            },
+          },
+        })
+      : await prisma.answerVote.findUnique({
+          where: {
+            answerId_userId: {
+              answerId: id,
+              userId: userId!,
+            },
+          },
+        });
 
     if (!vote) {
       return {
@@ -177,8 +249,8 @@ export async function hasVoted(
     return {
       success: true,
       data: {
-        hasUpvoted: vote.voteType === "upvote",
-        hasDownvoted: vote.voteType === "downvote",
+        hasUpvoted: vote.voteDirection === "upvote",
+        hasDownvoted: vote.voteDirection === "downvote",
       },
     };
   } catch (error) {

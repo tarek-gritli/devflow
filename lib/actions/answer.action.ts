@@ -1,11 +1,8 @@
 "use server";
 
-import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 
 import ROUTES from "@/constants/routes";
-import { Question, Vote } from "@/database";
-import Answer, { IAnswerDocument } from "@/database/answer.model";
 
 import action from "../handlers/action";
 import handleError from "../handlers/error";
@@ -16,10 +13,12 @@ import {
 } from "../validations";
 import { after } from "next/server";
 import { createInteraction } from "./interaction.action";
+import { prisma } from "../prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 export async function createAnswer(
   params: CreateAnswerParams
-): Promise<ActionResponse<IAnswerDocument>> {
+): Promise<ActionResponse<{ id: string }>> {
   const validationResult = await action({
     params,
     schema: AnswerServerSchema,
@@ -33,52 +32,42 @@ export async function createAnswer(
   const { content, questionId } = validationResult!.params;
   const userId = validationResult?.session?.user?.id;
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const question = await Question.findById(questionId);
+    const question = await prisma.question.findUnique({
+      where: {
+        id: questionId,
+      },
+    });
 
     if (!question) throw new Error("Question not found");
 
-    const [newAnswer] = await Answer.create(
-      [
-        {
-          author: userId,
-          question: questionId,
-          content,
-        },
-      ],
-      { session }
-    );
+    const newAnswer = await prisma.answer.create({
+      data: {
+        authorId: userId!,
+        questionId,
+        content,
+      },
+    });
 
     if (!newAnswer) throw new Error("Failed to create answer");
-
-    question.answers += 1;
-    await question.save({ session });
 
     after(async () => {
       await createInteraction({
         action: "post",
-        actionId: newAnswer._id.toString(),
+        actionId: newAnswer.id,
         actionTarget: "answer",
         authorId: userId as string,
       });
     });
 
-    await session.commitTransaction();
-
     revalidatePath(ROUTES.QUESTION(questionId));
 
     return {
       success: true,
-      data: JSON.parse(JSON.stringify(newAnswer)),
+      data: newAnswer,
     };
   } catch (error) {
-    await session.abortTransaction();
     return handleError(error) as ErrorResponse;
-  } finally {
-    await session.endSession();
   }
 }
 
@@ -103,38 +92,54 @@ export async function getAnswers(params: GetAnswersParams): Promise<
   const skip = (Number(page) - 1) * pageSize;
   const limit = pageSize;
 
-  let sortCriteria = {};
+  let orderBy: Prisma.AnswerOrderByWithRelationInput = {};
 
   switch (filter) {
     case "latest":
-      sortCriteria = { createdAt: -1 };
+      orderBy = { createdAt: "desc" };
       break;
     case "oldest":
-      sortCriteria = { createdAt: 1 };
+      orderBy = { createdAt: "asc" };
       break;
     case "popular":
-      sortCriteria = { upvotes: -1 };
+      orderBy = { upvotes: "desc" };
       break;
     default:
-      sortCriteria = { createdAt: -1 };
+      orderBy = { upvotes: "asc" };
       break;
   }
 
   try {
-    const totalAnswers = await Answer.countDocuments({ question: questionId });
+    const totalAnswers = await prisma.answer.count({
+      where: {
+        questionId,
+      },
+    });
 
-    const answers = await Answer.find({ question: questionId })
-      .populate("author", "_id name image")
-      .sort(sortCriteria)
-      .skip(skip)
-      .limit(limit);
+    const answers = await prisma.answer.findMany({
+      where: {
+        questionId,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+          },
+        },
+      },
+      orderBy,
+      skip,
+      take: limit,
+    });
 
     const isNext = totalAnswers > skip + answers.length;
 
     return {
       success: true,
       data: {
-        answers: JSON.parse(JSON.stringify(answers)),
+        answers: answers,
         isNext,
         totalAnswers,
       },
@@ -161,21 +166,27 @@ export async function deleteAnswer(
   const userId = validationResult?.session?.user?.id;
 
   try {
-    const answer = await Answer.findById(answerId);
+    const answer = await prisma.answer.findUnique({
+      where: {
+        id: answerId,
+      },
+    });
     if (!answer) throw new Error("Answer not found");
 
-    if (answer.author.toString() !== userId)
+    if (answer.authorId !== userId)
       throw new Error("You're not allowed to delete this answer");
 
-    await Question.findByIdAndUpdate(
-      answer.question,
-      { $inc: { answers: -1 } },
-      { new: true }
-    );
+    await prisma.answerVote.deleteMany({
+      where: {
+        answerId,
+      },
+    });
 
-    await Vote.deleteMany({ actionId: answerId, actionType: "answer" });
-
-    await Answer.findByIdAndDelete(answerId);
+    await prisma.answer.delete({
+      where: {
+        id: answerId,
+      },
+    });
 
     after(async () => {
       await createInteraction({
@@ -183,8 +194,8 @@ export async function deleteAnswer(
         actionId: answerId,
         actionTarget: "answer",
         authorId: userId as string,
-      })
-    })
+      });
+    });
 
     revalidatePath(`/profile/${userId}`);
 

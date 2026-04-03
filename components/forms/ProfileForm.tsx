@@ -57,7 +57,7 @@ const ProfileForm = ({ user }: Params) => {
           description: "Your profile has been updated successfully.",
         });
 
-        router.push(ROUTES.PROFILE(user._id));
+        router.push(ROUTES.PROFILE(user.id));
       } else {
         toast({
           title: `Error (${result.status})`,

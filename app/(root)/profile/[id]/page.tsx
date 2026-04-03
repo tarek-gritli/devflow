@@ -95,7 +95,7 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
   const { answers, isNext: answersIsNext } = userAnswers!;
   const { tags } = userTopTags!;
 
-  const { _id, name, image, portfolio, location, createdAt, username, bio } =
+  const { name, image, portfolio, location, createdAt, username, bio } =
     user;
 
   return (
@@ -103,7 +103,7 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
       <section className="flex flex-col-reverse items-start justify-between sm:flex-row">
         <div className="flex flex-col items-start gap-4 lg:flex-row">
           <UserAvatar
-            id={_id}
+            id={id}
             name={name}
             imageUrl={image}
             className="size-[140px] rounded-full object-cover"
@@ -186,10 +186,10 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
                 <div className="flex w-full flex-col gap-6">
                   {questions.map((question) => (
                     <QuestionCard
-                      key={question._id}
+                      key={question.id}
                       question={question}
                       showActionBtns={
-                        loggedInUser?.user?.id === question.author._id
+                        loggedInUser?.user?.id === question.author.id
                       }
                     />
                   ))}
@@ -208,12 +208,12 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
                 <div className="flex w-full flex-col gap-6">
                   {answers.map((answer) => (
                     <AnswerCard
-                      key={answer._id}
+                      key={answer.id}
                       {...answer}
                       containerClasses="card-wrapper rounded-[10px] px-7 py-9 sm:px-11"
                       showReadMore
                       showActionBtns={
-                        loggedInUser?.user?.id === answer.author._id
+                        loggedInUser?.user?.id === answer.author.id
                       }
                     />
                   ))}
@@ -236,8 +236,8 @@ const Profile = async ({ params, searchParams }: RouteParams) => {
                 <div className="mt-3 flex w-full flex-col gap-4">
                   {tags.map((tag) => (
                     <TagCard
-                      key={tag._id}
-                      _id={tag._id}
+                      key={tag.id}
+                      id={tag.id}
                       name={tag.name}
                       questions={tag.count}
                       showCount

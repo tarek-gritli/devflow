@@ -1,25 +1,28 @@
 interface Tag {
-  _id: string;
+  id: string;
   name: string;
   questions?: number;
+  createdAt?: Date;
 }
 
 interface Author {
-  _id: string;
+  id: string;
   name: string;
-  image: string;
+  image: string | null;
 }
 
 interface Question {
-  _id: string;
+  id: string;
   title: string;
   content: string;
   tags: Tag[];
   author: Author;
+  authorId: string;
   createdAt: Date;
+  updatedAt?: Date;
   upvotes: number;
   downvotes: number;
-  answers: number;
+  answers?: number;
   views: number;
 }
 
@@ -53,17 +56,19 @@ interface PaginatedSearchParams {
 }
 
 interface Answer {
-  _id: string;
+  id: string;
   author: Author;
+  authorId: string;
   content: string;
   createdAt: Date;
+  updatedAt?: Date;
   upvotes: number;
   downvotes: number;
-  question: string;
+  questionId: string;
 }
 
 interface User {
-  _id: string;
+  id: string;
   name: string;
   username: string;
   email: string;
@@ -75,10 +80,31 @@ interface User {
   createdAt: Date;
 }
 
+interface Account {
+  id: string;
+  userId: string;
+  password?: string;
+  provider: string;
+  providerAccountId?: string;
+  name: string;
+  image?: string;
+}
+
 interface Collection {
-  _id: string;
-  author: string | Author;
+  id: string;
+  authorId: string;
+  author: Author;
+  questionId: string;
   question: Question;
+}
+
+interface Interaction {
+  id: string;
+  action: "view" | "upvote" | "downvote" | "bookmark" | "post" | "edit" | "delete" | "search";
+  actionTarget: "question" | "answer";
+  authorId: string;
+  questionId?: string;
+  answerId?: string;
 }
 
 interface Badges {

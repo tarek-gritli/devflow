@@ -9,14 +9,14 @@ A Stack Overflow-inspired Q&A platform built with Next.js, featuring AI-powered 
 - **Authentication**: Google and GitHub OAuth integration
 - **Modern UI**: Built with Radix UI components and Tailwind CSS
 - **Dark/Light Theme**: Theme switching with next-themes
-- **Database**: MongoDB with Mongoose ORM
+- **Database**: Postgres with Prisma ORM
 - **Responsive Design**: Mobile-first approach with Tailwind CSS
 
 ## Tech Stack
 
 - **Framework**: Next.js 15 with App Router
 - **Language**: TypeScript
-- **Database**: MongoDB
+- **Database**: Postgres
 - **Authentication**: NextAuth.js v5
 - **Styling**: Tailwind CSS
 - **UI Components**: Radix UI
@@ -29,7 +29,7 @@ A Stack Overflow-inspired Q&A platform built with Next.js, featuring AI-powered 
 ### Prerequisites
 
 - Node.js 18+
-- MongoDB (local or cloud)
+- Postgres (local or cloud)
 - OpenAI API key
 - Google OAuth credentials
 - GitHub OAuth credentials
@@ -70,9 +70,6 @@ npm run dev
 The project includes Docker configuration for easy deployment:
 
 ```bash
-# Make sure your .env file is configured for Docker
-# MONGODB_URI should be set to mongodb://db:27017/devflow
-
 docker-compose up
 ```
 
@@ -80,7 +77,7 @@ docker-compose up
 
 See `.env.example` for all required environment variables. Key variables include:
 
-- `MONGODB_URI`: Database connection string
+- `DATABASE_URL`: Database connection string
 - `OPENAI_API_KEY`: For AI-powered features
 - `AUTH_SECRET`: Secret for JWT signing
 - `AUTH_GOOGLE_ID/SECRET`: Google OAuth (optional)

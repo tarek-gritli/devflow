@@ -80,13 +80,13 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
         <div className="flex w-full flex-col-reverse justify-between">
           <div className="flex items-center justify-start gap-1">
             <UserAvatar
-              id={author._id}
+              id={author.id}
               name={author.name}
               imageUrl={author.image}
               className="size-[22px]"
               fallbackClassName="text-[10px]"
             />
-            <Link href={ROUTES.PROFILE(author._id)}>
+            <Link href={ROUTES.PROFILE(author.id)}>
               <p className="paragraph-semibold text-dark300_light700">
                 {author.name}
               </p>
@@ -106,7 +106,7 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
 
             <Suspense fallback={<div>Loading...</div>}>
               <SaveQuestion
-                questionId={question._id}
+                questionId={question.id}
                 hasSavedQuestionPromise={hasSavedQuestionPromise}
               />
             </Suspense>
@@ -129,7 +129,7 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
         <Metric
           imgUrl="/icons/message.svg"
           alt="message icon"
-          value={answers}
+          value={answers ?? 0}
           title=""
           textStyles="small-regular text-dark400_light700"
         />
@@ -147,8 +147,8 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
       <div className="mt-8 flex flex-wrap gap-2">
         {tags.map((tag: Tag) => (
           <TagCard
-            key={tag._id}
-            _id={tag._id as string}
+            key={tag.id}
+            id={tag.id}
             name={tag.name}
             compact
           />
@@ -168,7 +168,7 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
 
       <section className="my-5">
         <AnswerForm
-          questionId={question._id}
+          questionId={question.id}
           questionTitle={title}
           questionContent={content}
         />

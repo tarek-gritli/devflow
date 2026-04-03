@@ -13,7 +13,7 @@ import GlobalFilter from "./filters/GlobalFilter";
 const GlobalResult = () => {
   const searchParams = useSearchParams();
 
-  const [result, setResult] = useState([]);
+  const [result, setResult] = useState<GlobalSearchedItem[]>([]);
   const [isLoading, setLoading] = useState(true);
 
   const global = searchParams.get("global");
@@ -30,7 +30,7 @@ const GlobalResult = () => {
           type,
         });
 
-        setResult(res.data);
+        setResult(res.data ?? []);
       } catch (error) {
         setResult([]);
       } finally {

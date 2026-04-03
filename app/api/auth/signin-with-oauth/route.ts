@@ -1,20 +1,13 @@
-import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import slugify from "slugify";
 
-import { Account, User } from "@/database";
 import handleError from "@/lib/handlers/error";
 import { ValidationError } from "@/lib/http-errors";
-import dbConnect from "@/lib/mongoose";
 import { SignInWithOAuthSchema } from "@/lib/validations";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   const { provider, providerAccountId, user } = await request.json();
-
-  await dbConnect();
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
     const validatedData = SignInWithOAuthSchema.safeParse({
@@ -26,59 +19,67 @@ export async function POST(request: Request) {
       throw new ValidationError(validatedData.error.flatten().fieldErrors);
     }
 
-    const { name, username, email, image } = user;
+    const { name, username, email, image } = validatedData.data.user;
     const slugifiedUsername = slugify(username, {
       lower: true,
       strict: true,
       trim: true,
     });
-    let existingUser = await User.findOne({ email }).session(session);
-    if (!existingUser) {
-      [existingUser] = await User.create(
-        [{ name, username, slugifiedUsername, email, image }],
-        { session }
-      );
-    } else {
-      const updatedData: { name?: string; image?: string } = {};
 
-      if (existingUser.name !== name) updatedData.name = name;
-      if (existingUser.image !== image) updatedData.image = image;
+    await prisma.$transaction(async (tx) => {
+      let existingUser = await tx.user.findUnique({
+        where: { email },
+      });
+      if (!existingUser) {
+        existingUser = await tx.user.create({
+          data: {
+            name,
+            username: slugifiedUsername,
+            email,
+            image,
+          },
+        });
+      } else {
+        const updatedData: { name?: string; image?: string } = {};
 
-      if (Object.keys(updatedData).length > 0) {
-        await User.updateOne(
-          { _id: existingUser._id },
-          { $set: updatedData }
-        ).session(session);
-      }
+        if (existingUser.name !== name) updatedData.name = name;
+        if (existingUser.image !== image) updatedData.image = image;
 
-      const existingAccount = await Account.findOne({
-        userId: existingUser._id,
-        provider,
-        providerAccountId,
-      }).session(session);
+        if (Object.keys(updatedData).length > 0) {
+          await tx.user.update({
+            where: {
+              id: existingUser.id,
+            },
+            data: updatedData,
+          });
+        }
 
-      if (!existingAccount) {
-        await Account.create(
-          [
-            {
-              userId: existingUser._id,
+        const existingAccount = await tx.account.findUnique({
+          where: {
+            id: existingUser.id,
+            provider_providerAccountId: {
+              provider,
+              providerAccountId,
+            },
+          },
+        });
+
+        if (!existingAccount) {
+          await tx.account.create({
+            data: {
+              userId: existingUser.id,
               name,
               image,
               provider,
               providerAccountId,
             },
-          ],
-          { session }
-        );
+          });
+        }
       }
+    });
 
-      await session.commitTransaction();
-    }
     return NextResponse.json({ success: true });
   } catch (error) {
-    await session.abortTransaction();
     return handleError(error, "api") as APIErrorResponse;
-  } finally {
-    session.endSession();
   }
 }

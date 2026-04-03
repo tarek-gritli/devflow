@@ -50,7 +50,7 @@ const Collections = async ({ searchParams }: SearchParams) => {
         render={(collection) => (
           <div className="mt-10 flex w-full flex-col gap-6">
             {collection.map((item) => (
-              <QuestionCard key={item._id} question={item.question} />
+              <QuestionCard key={item.id} question={item.question} />
             ))}
           </div>
         )}

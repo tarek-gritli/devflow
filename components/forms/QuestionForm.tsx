@@ -95,7 +95,7 @@ const QuestionForm = ({ question, isEdit = false }: Params) => {
     startTransition(async () => {
       if (isEdit && question) {
         const result = await editQuestion({
-          questionId: question?._id,
+          questionId: question?.id,
           ...data,
         });
 
@@ -105,7 +105,7 @@ const QuestionForm = ({ question, isEdit = false }: Params) => {
             description: "Question updated successfully",
           });
 
-          if (result.data) router.push(ROUTES.QUESTION(question._id));
+          if (result.data) router.push(ROUTES.QUESTION(question.id));
         } else {
           toast({
             title: `Error ${result.status}`,
@@ -125,7 +125,7 @@ const QuestionForm = ({ question, isEdit = false }: Params) => {
           description: "Question created successfully",
         });
 
-        if (result.data) router.push(ROUTES.QUESTION(result.data._id));
+        if (result.data) router.push(ROUTES.QUESTION(result.data.id));
       } else {
         toast({
           title: `Error ${result.status}`,
@@ -208,7 +208,7 @@ const QuestionForm = ({ question, isEdit = false }: Params) => {
                       {field?.value?.map((tag: string) => (
                         <TagCard
                           key={tag}
-                          _id={tag}
+                          id={tag}
                           name={tag}
                           compact
                           remove

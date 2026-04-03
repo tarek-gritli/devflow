@@ -39,7 +39,7 @@ const AllAnswers = ({
         success={success}
         empty={EMPTY_ANSWERS}
         render={(answers) =>
-          answers.map((answer) => <AnswerCard key={answer._id} {...answer} />)
+          answers.map((answer) => <AnswerCard key={answer.id} {...answer} />)
         }
       />
       <Pagination page={page} isNext={isNext} />

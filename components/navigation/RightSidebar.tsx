@@ -31,11 +31,11 @@ const RightSidebar = async () => {
             }}
             render={(hotQuestions) => (
               <div className="mt-7 flex w-full flex-col gap-[30px]">
-                {hotQuestions.map(({ _id, title }) => (
+                {hotQuestions.map(({ id, title }) => (
                   <Link
                     className="flex cursor-pointer items-center justify-between gap-7"
-                    href={ROUTES.QUESTION(_id)}
-                    key={_id}
+                    href={ROUTES.QUESTION(id)}
+                    key={id}
                   >
                     <p className="body-medium text-dark500_light700">{title}</p>
                     <Image
@@ -65,10 +65,10 @@ const RightSidebar = async () => {
           }}
           render={(popularTags) => (
             <div className="mt-7 flex flex-col gap-4">
-              {popularTags.map(({ _id, name, questions }) => (
+              {popularTags.map(({ id, name, questions }) => (
                 <TagCard
-                  key={_id}
-                  _id={_id}
+                  key={id}
+                  id={id}
                   name={name}
                   questions={questions}
                   showCount

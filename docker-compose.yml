@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: devflow-app
     build: .
     ports:
       - "3000:3000"
@@ -10,17 +11,16 @@ services:
     depends_on:
       - db
   db:
-    image: mongo
+    image: postgres:17-alpine
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongo-data:/data/db
-    command: mongod --replSet rs0
-    healthcheck:
-      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'db:27017'}]}) }" | mongosh --port 27017 --quiet
-      interval: 10s
-      timeout: 30s
-      retries: 5
-      start_period: 30s
+      - pgdata:/var/lib/postgresql/data
+    container_name: devflow-db
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: devflow
 volumes:
-  mongo-data:
+  pgdata:
