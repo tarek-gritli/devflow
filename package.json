@@ -9,9 +9,11 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^1.1.9",
+    "@ai-sdk/openai": "^3.0.50",
     "@hookform/resolvers": "^3.10.0",
     "@mdxeditor/editor": "^3.21.4",
+    "@opentelemetry/instrumentation-mongodb": "^0.67.0",
+    "@opentelemetry/instrumentation-mongoose": "^0.60.0",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "@radix-ui/react-alert-dialog": "^1.1.15",

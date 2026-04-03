@@ -15,14 +15,14 @@ import {
 import { createInteraction } from "./interaction.action";
 import { NotFoundError, UnauthorizedError } from "../http-errors";
 import { cache } from "react";
-import { Prisma, Question } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import ROUTES from "@/constants/routes";
 
 export async function createQuestion(
   params: CreateQuestionParams
-): Promise<ActionResponse<Question>> {
+): Promise<ActionResponse<{ id: string }>> {
   const validationResult = await action({
     params,
     schema: AskQuestionSchema,
@@ -96,7 +96,7 @@ export async function createQuestion(
 
 export async function editQuestion(
   params: EditQuestionParams
-): Promise<ActionResponse<Question>> {
+): Promise<ActionResponse<{ id: string }>> {
   const validationResult = await action({
     params,
     schema: EditQuestionSchema,
@@ -141,9 +141,8 @@ export async function editQuestion(
         updatedData.content = content;
       }
 
-      let updatedQuestion = question;
       if (Object.keys(updatedData).length > 0) {
-        updatedQuestion = await tx.question.update({
+        await tx.question.update({
           where: {
             id: question.id,
           },
@@ -204,12 +203,12 @@ export async function editQuestion(
         });
       }
 
-      return updatedQuestion;
+      return question;
     });
 
     revalidatePath(ROUTES.QUESTION(questionId));
 
-    return { success: true, data: updatedQuestion };
+    return { success: true, data: { id: updatedQuestion.id } };
   } catch (error) {
     return handleError(error) as ErrorResponse;
   }
@@ -251,6 +250,11 @@ export const getQuestion = cache(
               image: true,
             },
           },
+          _count: {
+            select: {
+              answers: true,
+            },
+          },
         },
       });
 
@@ -258,7 +262,13 @@ export const getQuestion = cache(
         throw new NotFoundError("Question");
       }
 
-      return { success: true, data: question };
+      const formattedQuestion = {
+        ...question,
+        tags: question.tags.map((t) => t.tag),
+        answers: question._count.answers,
+      };
+
+      return { success: true, data: formattedQuestion as Question };
     } catch (error) {
       return handleError(error) as ErrorResponse;
     }
@@ -352,8 +362,14 @@ export async function getQuestions(
         },
         author: {
           select: {
+            id: true,
             name: true,
             image: true,
+          },
+        },
+        _count: {
+          select: {
+            answers: true,
           },
         },
       },
@@ -363,11 +379,15 @@ export async function getQuestions(
     });
 
     const isNext = questions.length > limit;
-    const questionsToReturn = questions.slice(0, limit);
+    const questionsToReturn = questions.slice(0, limit).map((q) => ({
+      ...q,
+      tags: q.tags.map((t) => t.tag),
+      answers: q._count.answers,
+    }));
 
     return {
       success: true,
-      data: { questions: questionsToReturn, isNext },
+      data: { questions: questionsToReturn as Question[], isNext },
     };
   } catch (error) {
     return handleError(error) as ErrorResponse;
@@ -417,7 +437,9 @@ export async function incrementViews(
   }
 }
 
-export async function getHotQuestions(): Promise<ActionResponse<Question[]>> {
+export async function getHotQuestions(): Promise<
+  ActionResponse<{ id: string; title: string }[]>
+> {
   try {
     const questions = await prisma.question.findMany({
       orderBy: [{ upvotes: "desc" }, { views: "desc" }],
@@ -560,8 +582,14 @@ async function getRecommendedQuestions({
         },
         author: {
           select: {
+            id: true,
             name: true,
             image: true,
+          },
+        },
+        _count: {
+          select: {
+            answers: true,
           },
         },
       },
@@ -573,10 +601,14 @@ async function getRecommendedQuestions({
     const isNext = questions.length > limit;
 
     return {
-      questions: questions.slice(0, limit),
+      questions: questions.slice(0, limit).map((q) => ({
+        ...q,
+        tags: q.tags.map((t) => t.tag),
+        answers: q._count.answers,
+      })) as Question[],
       isNext,
     };
   } catch (error) {
-    return handleError(error) as ErrorResponse;
+    throw error;
   }
 }

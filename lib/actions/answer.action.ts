@@ -18,7 +18,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 export async function createAnswer(
   params: CreateAnswerParams
-): Promise<ActionResponse<Omit<Answer, "question" | "author">>> {
+): Promise<ActionResponse<{ id: string }>> {
   const validationResult = await action({
     params,
     schema: AnswerServerSchema,
@@ -119,6 +119,15 @@ export async function getAnswers(params: GetAnswersParams): Promise<
     const answers = await prisma.answer.findMany({
       where: {
         questionId,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+          },
+        },
       },
       orderBy,
       skip,

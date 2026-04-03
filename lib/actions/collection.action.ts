@@ -199,11 +199,14 @@ export const getSavedQuestions = async (
 
     const formattedCollections = collections.map((col) => ({
       id: col.id,
+      authorId: col.authorId,
       author: col.author,
+      questionId: col.questionId,
       question: {
         id: col.question.id,
         title: col.question.title,
         content: col.question.content,
+        authorId: col.question.authorId,
         tags: col.question.tags.map((qt) => ({
           id: qt.tag.id,
           name: qt.tag.name,

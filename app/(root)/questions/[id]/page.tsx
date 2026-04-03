@@ -129,7 +129,7 @@ const QuestionDetails = async ({ params, searchParams }: RouteParams) => {
         <Metric
           imgUrl="/icons/message.svg"
           alt="message icon"
-          value={answers}
+          value={answers ?? 0}
           title=""
           textStyles="small-regular text-dark400_light700"
         />

@@ -161,6 +161,7 @@ export async function getUserQuestions(
             select: {
               tag: {
                 select: {
+                  id: true,
                   name: true,
                 },
               },
@@ -168,8 +169,14 @@ export async function getUserQuestions(
           },
           author: {
             select: {
+              id: true,
               name: true,
               image: true,
+            },
+          },
+          _count: {
+            select: {
+              answers: true,
             },
           },
         },
@@ -182,7 +189,11 @@ export async function getUserQuestions(
     ]);
 
     const isNext = questions.length > limit;
-    const questionsToReturn = questions.slice(0, limit);
+    const questionsToReturn = questions.slice(0, limit).map((q) => ({
+      ...q,
+      tags: q.tags.map((t) => t.tag),
+      answers: q._count.answers,
+    }));
 
     return {
       success: true,
@@ -217,6 +228,7 @@ export const getUserAnswers = async (
         include: {
           author: {
             select: {
+              id: true,
               name: true,
               image: true,
             },

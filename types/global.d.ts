@@ -2,6 +2,7 @@ interface Tag {
   id: string;
   name: string;
   questions?: number;
+  createdAt?: Date;
 }
 
 interface Author {
@@ -16,9 +17,12 @@ interface Question {
   content: string;
   tags: Tag[];
   author: Author;
+  authorId: string;
   createdAt: Date;
+  updatedAt?: Date;
   upvotes: number;
   downvotes: number;
+  answers?: number;
   views: number;
 }
 
@@ -54,11 +58,13 @@ interface PaginatedSearchParams {
 interface Answer {
   id: string;
   author: Author;
+  authorId: string;
   content: string;
   createdAt: Date;
+  updatedAt?: Date;
   upvotes: number;
   downvotes: number;
-  question: string;
+  questionId: string;
 }
 
 interface User {
@@ -86,7 +92,9 @@ interface Account {
 
 interface Collection {
   id: string;
-  author: string | Author;
+  authorId: string;
+  author: Author;
+  questionId: string;
   question: Question;
 }
 

@@ -14,7 +14,7 @@ interface Props {
 }
 
 const QuestionCard = ({
-  question: { id, title, tags, author, createdAt, upvotes, answers, views },
+  question: { id, title, tags, author, createdAt, upvotes, answers = 0, views },
   showActionBtns,
 }: Props) => {
   return (

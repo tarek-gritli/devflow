@@ -23,7 +23,7 @@ const AnswerCard = ({
   createdAt,
   upvotes,
   downvotes,
-  question,
+  questionId,
   containerClasses = "",
   showReadMore = false,
   showActionBtns = false,
@@ -81,7 +81,7 @@ const AnswerCard = ({
 
       {showReadMore && (
         <Link
-          href={`/questions/${question}#answer-${id}`}
+          href={`/questions/${questionId}#answer-${id}`}
           className="body-semibold relative z-10 font-space-grotesk text-primary-500"
         >
           <p className="mt-1">Read more...</p>

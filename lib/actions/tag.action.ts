@@ -152,12 +152,15 @@ export const getTagQuestions = async (
         select: {
           id: true,
           title: true,
+          content: true,
           views: true,
           upvotes: true,
           downvotes: true,
           createdAt: true,
+          authorId: true,
           author: {
             select: {
+              id: true,
               name: true,
               image: true,
             },
@@ -166,6 +169,7 @@ export const getTagQuestions = async (
             select: {
               tag: {
                 select: {
+                  id: true,
                   name: true,
                 },
               },
@@ -191,12 +195,14 @@ export const getTagQuestions = async (
     const formattedQuestions = questionsToReturn.map((q) => ({
       id: q.id,
       title: q.title,
+      content: q.content,
       views: q.views,
       upvotes: q.upvotes,
       downvotes: q.downvotes,
       createdAt: q.createdAt,
+      authorId: q.authorId,
       author: q.author,
-      tags: q.tags.map((t) => ({ name: t.tag.name })),
+      tags: q.tags.map((t) => t.tag),
       answers: q._count.answers,
     }));
 

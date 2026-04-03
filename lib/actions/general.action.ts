@@ -18,7 +18,7 @@ export async function globalSearch(params: GlobalSearchParams) {
 
     const { query, type } = params;
 
-    let results: Array<{ title: string; type: string; id: string }> = [];
+    let results: GlobalSearchedItem[] = [];
 
     const typeLower = type?.toLowerCase();
 
@@ -83,22 +83,22 @@ export async function globalSearch(params: GlobalSearchParams) {
       results.push(
         ...questions.map((item) => ({
           title: item.title,
-          type: "question",
+          type: "question" as const,
           id: item.id,
         })),
         ...users.map((item) => ({
           title: item.name,
-          type: "user",
+          type: "user" as const,
           id: item.id,
         })),
         ...answers.map((item) => ({
           title: `Answers containing ${query}`,
-          type: "answer",
+          type: "answer" as const,
           id: item.questionId,
         })),
         ...tags.map((item) => ({
           title: item.name,
-          type: "tag",
+          type: "tag" as const,
           id: item.id,
         }))
       );
@@ -122,7 +122,7 @@ export async function globalSearch(params: GlobalSearchParams) {
 
           results = questions.map((item) => ({
             title: item.title,
-            type: "question",
+            type: "question" as const,
             id: item.id,
           }));
           break;
@@ -144,7 +144,7 @@ export async function globalSearch(params: GlobalSearchParams) {
 
           results = users.map((item) => ({
             title: item.name,
-            type: "user",
+            type: "user" as const,
             id: item.id,
           }));
           break;
@@ -166,7 +166,7 @@ export async function globalSearch(params: GlobalSearchParams) {
 
           results = answers.map((item) => ({
             title: `Answers containing ${query}`,
-            type: "answer",
+            type: "answer" as const,
             id: item.questionId,
           }));
           break;
@@ -188,7 +188,7 @@ export async function globalSearch(params: GlobalSearchParams) {
 
           results = tags.map((item) => ({
             title: item.name,
-            type: "tag",
+            type: "tag" as const,
             id: item.id,
           }));
           break;
